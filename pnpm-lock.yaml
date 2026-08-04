@@ -76,6 +76,15 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/google:
+    dependencies:
+      '@liads/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
   packages/mcp:
     dependencies:
       '@liads/core':
