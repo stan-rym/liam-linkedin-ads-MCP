@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "pnpm --filter @liads/core --filter @liads/mcp build && next build",
+    "build": "pnpm --filter \"@liads/web^...\" build && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },

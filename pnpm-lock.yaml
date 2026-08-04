@@ -60,6 +60,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@liads/shared':
+        specifier: workspace:*
+        version: link:../shared
       csv-parse:
         specifier: ^5.6.0
         version: 5.6.0
@@ -84,6 +87,12 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/shared:
+    dependencies:
+      open:
+        specifier: ^10.1.0
+        version: 10.2.0
 
 packages:
 
