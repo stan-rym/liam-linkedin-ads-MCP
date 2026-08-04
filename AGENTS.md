@@ -114,10 +114,15 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
 - **Developer token** comes from a **manager** account's API Center. A plain client account
   cannot issue one. Google usually auto-grants Explorer (2,880 production ops/day); Basic
   (15,000/day) is a separate application.
+- **Explorer access blocks KeywordPlanService**, so `generateKeywordIdeas` needs **Basic**.
+  Campaign creation, structure reads, and GAQL reporting all work on Explorer. If keyword
+  ideas fail with an authorization error on an otherwise-working token, this is why.
 - **OAuth needs `access_type=offline` AND `prompt=consent`.** Without both, Google returns a
   refresh token on the first authorization only, and every re-auth after that returns none.
-  A consent screen left in "Testing" issues refresh tokens that die after 7 days: set the app
-  Internal or publish it.
+- **Consent screen: External + In production.** A consent screen left in "Testing" issues
+  refresh tokens that die after 7 days. Internal (Workspace) also avoids that, but it is
+  **not** eligible for brand verification, which is the pilot that cuts Basic Access review
+  from days to hours and explicitly requires External + In production. Prefer External.
 - **`googleAds:mutate` is the write path.** It takes operations across resource types, resolves
   **temporary resource names** (negative ids, e.g. `customers/X/campaigns/-2`), and is atomic.
   Temp ids must be unique across the whole request even between types, and a child may only

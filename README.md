@@ -106,13 +106,20 @@ Google Ads needs two things LinkedIn does not:
 
 1. **A developer token**, from a Google Ads **manager (MCC)** account at
    [ads.google.com/aw/apicenter](https://ads.google.com/aw/apicenter). A plain
-   client account cannot issue one. Explorer access (2,880 ops/day) is usually
-   granted automatically and is enough to build against; Basic (15,000/day) is a
-   separate application on the same screen.
+   client account cannot issue one. Approval usually lands on **Explorer** access
+   automatically (2,880 production ops/day).
+
+   **Explorer is not enough for `liam google keywords`.** Explorer blocks
+   KeywordPlanService, so keyword research needs **Basic** access (15,000
+   ops/day), which is a separate application on the same screen. Campaign
+   creation and reporting work fine on Explorer.
 2. **An OAuth client**, from a Google Cloud project with the Google Ads API
    enabled. Use the "Desktop app" type, which accepts any `localhost` redirect.
-   Set the consent screen to **Internal** or publish it: an app left in "Testing"
-   issues refresh tokens that stop working after 7 days.
+   Set the consent screen to **External** with publishing status **In
+   production**. Two reasons: an app left in "Testing" issues refresh tokens that
+   stop working after 7 days, and External + In production is a precondition for
+   the brand verification that fast-tracks a Basic Access application from days
+   to hours.
 
 Then write `~/.liads/google.json`:
 
