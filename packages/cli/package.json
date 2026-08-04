@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@liads/core": "workspace:*",
+    "@liads/google": "workspace:*",
     "commander": "^13.0.0"
   }
 }

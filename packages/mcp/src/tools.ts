@@ -42,6 +42,7 @@ import {
   listCreatives,
   deleteAd,
 } from "@liads/core";
+import { registerGoogleTools } from "./googleTools.js";
 
 const AD_ENTITY_TYPE = z
   .enum(["campaignGroup", "campaign", "creative"])
@@ -53,11 +54,26 @@ const fail = (e: unknown) => ({
   content: [{ type: "text" as const, text: e instanceof Error ? e.message : String(e) }],
 });
 
+export interface RegisterToolsOptions {
+  /**
+   * Also register the Google Ads (`gads_*`) tools. On by default for the local
+   * stdio server.
+   *
+   * The hosted handler turns this OFF deliberately. That endpoint is
+   * multi-tenant: each caller brings their own LinkedIn credentials in request
+   * headers, while Google credentials would come from a single set of server
+   * environment variables. Exposing the Google tools there would let any caller
+   * operate whichever Google Ads account the server is configured with.
+   */
+  google?: boolean;
+}
+
 /**
- * Registers every LinkedIn ads tool on an MCP server. Shared by the local stdio
- * entry point and the hosted (Vercel) HTTP handler so both expose the same surface.
+ * Registers the ad tools on an MCP server. Shared by the local stdio entry
+ * point and the hosted (Vercel) HTTP handler.
  */
-export function registerTools(server: McpServer): void {
+export function registerTools(server: McpServer, options: RegisterToolsOptions = {}): void {
+  if (options.google ?? true) registerGoogleTools(server);
   server.tool("list_ad_accounts", "List LinkedIn ad accounts this app can access.", {}, async () => {
     try {
       const liads = await createLiads();

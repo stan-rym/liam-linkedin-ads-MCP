@@ -54,6 +54,9 @@ importers:
       '@liads/core':
         specifier: workspace:*
         version: link:../core
+      '@liads/google':
+        specifier: workspace:*
+        version: link:../google
       commander:
         specifier: ^13.0.0
         version: 13.1.0
@@ -90,6 +93,9 @@ importers:
       '@liads/core':
         specifier: workspace:*
         version: link:../core
+      '@liads/google':
+        specifier: workspace:*
+        version: link:../google
       '@modelcontextprotocol/sdk':
         specifier: ^1.13.0
         version: 1.29.0(zod@3.25.76)

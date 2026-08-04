@@ -31,9 +31,17 @@ import {
   listCreatives,
   deleteAd,
 } from "@liads/core";
+import { registerGoogleCommands } from "./google.js";
 
 const program = new Command();
-program.name("liam").description("Liam, an ad manager for LinkedIn (CLI)").version("0.1.0");
+program
+  .name("liam")
+  .description("Liam, an ad manager for LinkedIn and Google Ads (CLI)")
+  .version("0.1.0");
+
+// Google Ads lives under `liam google ...`; LinkedIn keeps the top level it has
+// always had, so no existing command or script changes.
+registerGoogleCommands(program);
 
 /** The public hosted MCP endpoint (see README "Hosted MCP" section). */
 const HOSTED_MCP_URL = "https://liam-mcp.vercel.app/api/mcp";
