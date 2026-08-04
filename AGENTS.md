@@ -1,17 +1,25 @@
 # AGENTS.md
 
 Guidance for AI agents and contributors working in this repo. Liam is an MCP server
-and CLI that creates LinkedIn ad campaigns. Read this before changing code.
+and CLI that creates ad campaigns on LinkedIn and Google Ads. Read this before
+changing code.
 
 ## Architecture
 
 pnpm + TypeScript monorepo:
 
-- `packages/core` — the engine. No UI. Owns the LinkedIn REST client, OAuth, every
+- `packages/shared` — the platform-neutral layer: OAuth flow, credential stores, retry
+  policy, the change journal and its lift windowing, named reporting periods, and the KPI
+  math every platform shares. Anything here must be true of both platforms; anything true
+  of only one belongs in that platform's package.
+- `packages/core` — the LinkedIn engine. No UI. Owns the LinkedIn REST client, every
   resource module, audience hashing, targeting, conversions, and the Salesforce reader.
-- `packages/mcp` — MCP server. `src/tools.ts` registers all tools and is shared by the
-  stdio entry (`src/index.ts`) and the hosted Vercel route. Add tools in `tools.ts`.
-- `packages/cli` — the `liam` CLI (commander) over the same core.
+- `packages/google` — the Google Ads engine. Same shape as core: config and auth, one HTTP
+  chokepoint, thin typed resource modules over GAQL, zod schemas reused as MCP inputs.
+- `packages/mcp` — MCP server. `src/tools.ts` (LinkedIn) and `src/googleTools.ts`
+  (`gads_*`) are shared by the stdio entry (`src/index.ts`) and the hosted Vercel route.
+- `packages/cli` — the `liam` CLI (commander). LinkedIn at the top level, Google under
+  `liam google ...` (`src/google.ts`).
 - `apps/web` — Next.js app hosting the MCP over HTTP at `/api/mcp` (Vercel). Two tenants:
   the env-credential tenant gated by a `MCP_AUTH_TOKEN` bearer, and bring-your-own
   credentials callers who send `X-Liads-*` headers (client id/secret + refresh token,
@@ -24,20 +32,28 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
 
 ## Conventions
 
-- **Everything is created DRAFT.** Campaigns, campaign groups, and creatives default to
-  `DRAFT`/`intendedStatus: DRAFT`. Never change that default. Activation is a separate,
-  explicit step.
+- **Nothing is ever created live.** On LinkedIn, campaigns, campaign groups, and creatives
+  default to `DRAFT`/`intendedStatus: DRAFT`. On Google, which has no draft status, campaigns,
+  ad groups, and ads are created `PAUSED` and the schemas cannot express any other status.
+  Never change either default. Activation is a separate, explicit, human step, and there is
+  deliberately no tool for it on either platform.
 - **zod schemas are the source of truth.** All tool/command inputs live as zod schemas in
   `core/src/schemas.ts` and are reused as MCP tool input schemas (`Schema.shape`). Add or
   change a field there first, then thread it through the resource module.
-- **Secrets never enter the repo.** Local credentials live in `~/.liads/`
-  (`config.json` + `credentials.json`, mode 0600). Hosted credentials are `LIADS_*` env
-  vars on Vercel, or per-request `X-Liads-*` headers for bring-your-own-credentials
-  callers. The config layer (core/config.ts) resolves request context first, then env,
-  then files. Never log header credentials.
+- **Secrets never enter the repo.** Local credentials live in `~/.liads/` (LinkedIn:
+  `config.json` + `credentials.json`; Google: `google.json` + `google-credentials.json`,
+  all mode 0600). Hosted credentials are `LIADS_*` / `GADS_*` env vars, or per-request
+  `X-Liads-*` headers for bring-your-own-credentials callers. The config layer resolves
+  request context first, then env, then files. Never log header credentials.
+- **The hosted MCP does not expose the Google tools**, and must not start doing so. That
+  endpoint is multi-tenant over per-request LinkedIn credentials while Google credentials
+  would come from shared server env vars, so exposing them would let any caller operate the
+  server's Google Ads account. `registerTools(server, { google: false })` in the web route.
 - **Internal names are frozen.** The package scope `@liads/*`, the `~/.liads` dir, and the
   `LIADS_*` env prefix are intentionally NOT renamed to "liam" (renaming breaks stored
-  creds and the deployed Vercel env). The brand "Liam" is visible-surface only.
+  creds and the deployed Vercel env). The brand "Liam" is visible-surface only. Google
+  config shares `~/.liads` for the same reason, and because the change journal at its root
+  already spans both platforms.
 - Match the surrounding code style. Keep comments at the existing density. No em dashes in
   user-facing strings.
 
@@ -86,12 +102,59 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
   campaign; a later failure can orphan the group. (Cleanup-on-failure is implemented for
   audience upload; campaign-group cleanup is a known TODO.)
 
+## Google Ads API gotchas (learned while building; do not regress)
+
+- **Version is pinned** (`v25` in `google/config.ts`). Major versions carry breaking
+  changes — v24 renamed `campaign.start_date` to `campaign.start_date_time` — and each is
+  supported for roughly a year. Bump deliberately.
+- **Three headers, every call:** `Authorization: Bearer`, `developer-token`, and
+  `login-customer-id` **only** when reaching the account through a manager (MCC). Sending an
+  unrelated login-customer-id is an authorization error, so it is opt-in via config. Customer
+  ids go in without hyphens.
+- **Developer token** comes from a **manager** account's API Center. A plain client account
+  cannot issue one. Google usually auto-grants Explorer (2,880 production ops/day); Basic
+  (15,000/day) is a separate application.
+- **OAuth needs `access_type=offline` AND `prompt=consent`.** Without both, Google returns a
+  refresh token on the first authorization only, and every re-auth after that returns none.
+  A consent screen left in "Testing" issues refresh tokens that die after 7 days: set the app
+  Internal or publish it.
+- **`googleAds:mutate` is the write path.** It takes operations across resource types, resolves
+  **temporary resource names** (negative ids, e.g. `customers/X/campaigns/-2`), and is atomic.
+  Temp ids must be unique across the whole request even between types, and a child may only
+  reference a parent defined **earlier** in the list. This is why `launchSearchCampaign` builds
+  budget → campaign → criteria → ad group → keywords → ads in that order.
+- **`validateOnly: true` is a real server-side dry run.** Always send one before a real write.
+  It must be marked `isRead` so it never reaches the change journal.
+- **Errors nest three deep.** `error.details[].errors[]` is a `GoogleAdsFailure`; each entry has
+  an `errorCode` object with exactly one key (the family), a message, and
+  `location.fieldPathElements[]`. `flattenGoogleAdsErrors` unwraps this into one readable line
+  with the field path. Without it every failure reads as an opaque 400.
+- **int64 arrives as a string** in protobuf JSON. `metrics.impressions` and `metrics.cost_micros`
+  are quoted; coerce before any arithmetic. Money is always micros (dollars × 1e6).
+- **GAQL has no bound parameters.** Every interpolated value goes through `gaqlString`, or a name
+  containing a quote breaks the query.
+- **Reads are all GAQL**, via `searchStream`, which returns a JSON *array of chunks* and can carry
+  an error inside a 200 response. The client checks the payload as well as the status.
+- **Adding `segments.date` to a filter fans results out to one row per entity per day**, so
+  `getGooglePerformance` merges rows back together before deriving KPIs.
+- **Geo and language constants are queried, not hard-coded** (`geo_target_constant`,
+  `language_constant` are queryable resources), so "US" and "en" never go stale.
+- **The safety rule is structural.** No create schema can express a status other than `PAUSED`;
+  only keyword criteria are `ENABLED`, since nothing serves under a paused parent. There is no
+  activate tool, matching LinkedIn's draft-only rule. `packages/google/test/launch.test.mjs`
+  asserts this against a stubbed transport — keep it passing.
+- **Untested against a live account at time of writing** (no developer token yet): the campaign
+  `startDateTime` format is documented as `"YYYY-MM-DD HH:MM:SS"` but Google's own samples show
+  `"YYYYMMDD HH:MM:SS"`. Liam omits the field unless a brief sets it, so the default path avoids
+  the question; if a dry run rejects it, try the other format.
+
 ## Build / verify
 
 ```bash
 pnpm install
-pnpm -r build        # core must build before cli/mcp/web resolve its dist
+pnpm -r build        # shared builds first; core/google before cli/mcp/web resolve their dist
 pnpm -r typecheck
+pnpm test            # node --test over packages/google/test
 ```
 
 The hosted app auto-deploys on push to `main` (Vercel GitHub integration). Verify a live

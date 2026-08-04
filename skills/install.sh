@@ -9,7 +9,8 @@ DEST="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 
 mkdir -p "$DEST"
 
-for dir in "$SRC"/liam-*/; do
+for dir in "$SRC"/liam-*/ "$SRC"/gads-*/; do
+  [ -d "$dir" ] || continue
   name="$(basename "$dir")"
   target="$DEST/$name"
   if [ -e "$target" ] && [ ! -L "$target" ] && [ "$MODE" != "--copy" ]; then

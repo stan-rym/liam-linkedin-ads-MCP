@@ -1,12 +1,13 @@
 # Liam
 
-**Liam** is an ad manager for LinkedIn (LinkedIn Ad Manager). Create campaigns by talking
+**Liam** is an ad manager for LinkedIn and Google Ads. Create campaigns by talking
 to Claude (MCP) or from a CLI. Built for go-to-market teams who want to spin up many
-campaigns from a contact list and a brief, then add creative images themselves. Everything
-is created as a **draft**, so nothing spends until you explicitly activate it in Campaign
-Manager.
+campaigns from a contact list and a brief, then add creative images themselves. Nothing
+is ever created live: LinkedIn entities are **drafts**, Google entities are **paused**,
+and there is no activate tool on either platform, so nothing spends until you turn it on
+yourself.
 
-> Unofficial and not affiliated with or endorsed by LinkedIn.
+> Unofficial and not affiliated with or endorsed by LinkedIn or Google.
 
 > Covers creation, matched audiences (including building one straight from Salesforce),
 > conversion selection, performance reporting/insights, competitor ad intelligence, and a
@@ -52,20 +53,90 @@ Some loops that work well:
 - Or skip the assistant entirely and put the CLI in cron:
   `0 9 * * 1 liam report summary -p last_7_days`
 
-## Hierarchy mapping (LinkedIn differs from Google/Meta)
+## Hierarchy mapping (the two platforms disagree)
 
-| Common term | LinkedIn entity    | Holds                                    |
-| ----------- | ------------------ | ---------------------------------------- |
-| Campaign    | **Campaign Group** | status, total/shared budget              |
-| Ad group    | **Campaign**       | targeting, budget, bid, schedule, format |
-| Ad          | **Creative**       | the rendered ad (`status: DRAFT`)        |
-| Audience    | **DMP Segment**    | attached to a Campaign's targeting       |
+LinkedIn's names are shifted one level from everyone else's, which is the single
+most common source of confusion when working across both:
+
+| Common term | LinkedIn entity    | Google Ads entity | Holds                                    |
+| ----------- | ------------------ | ----------------- | ---------------------------------------- |
+| Campaign    | **Campaign Group** | —                 | status, total/shared budget              |
+| Ad group    | **Campaign**       | **Campaign**      | targeting, budget, bid, schedule, format |
+| —           | —                  | **Ad group**      | keywords and the ads that answer them    |
+| Ad          | **Creative**       | **Ad group ad**   | the rendered ad                          |
+| Audience    | **DMP Segment**    | **User list**     | attached to targeting                    |
+
+So a LinkedIn "campaign" and a Google "campaign" are not the same thing: Google's
+campaign holds the budget and targeting (LinkedIn's *campaign group* plus
+*campaign*), and its ad group holds keywords.
+
+## Google Ads
+
+Search campaigns only, creation-first. What is there today:
+
+```bash
+liam google auth login
+liam google accounts list                       # proves the token and OAuth client work
+liam google keywords "revops automation" --url https://www.default.com/platform
+liam google conversions list
+liam google launch --brief examples/google-brief.json           # dry run
+liam google launch --brief examples/google-brief.json --apply   # create it, paused
+liam google campaigns list
+liam google report perf keyword -p last_30_days
+```
+
+A launch creates the budget, campaign, geo and language targeting, ad groups,
+keywords, and responsive search ads in **one atomic mutate**: it either lands
+whole or not at all, so a failure cannot leave half a campaign behind. Every
+write is validated server-side first, which is a genuine dry run rather than a
+local guess.
+
+Three house rules are hard-coded, because all three default the wrong way in the
+UI and quietly waste B2B budget:
+
+- **Search network only.** Display expansion and search partners off.
+- **Physical presence only.** "US" means people in the US, not people anywhere
+  who searched about it.
+- **Manual CPC to start.** Smart bidding with no conversion history spends
+  unpredictably. Switch in the UI once there is data.
+
+### Setup
+
+Google Ads needs two things LinkedIn does not:
+
+1. **A developer token**, from a Google Ads **manager (MCC)** account at
+   [ads.google.com/aw/apicenter](https://ads.google.com/aw/apicenter). A plain
+   client account cannot issue one. Explorer access (2,880 ops/day) is usually
+   granted automatically and is enough to build against; Basic (15,000/day) is a
+   separate application on the same screen.
+2. **An OAuth client**, from a Google Cloud project with the Google Ads API
+   enabled. Use the "Desktop app" type, which accepts any `localhost` redirect.
+   Set the consent screen to **Internal** or publish it: an app left in "Testing"
+   issues refresh tokens that stop working after 7 days.
+
+Then write `~/.liads/google.json`:
+
+```json
+{
+  "clientId": "....apps.googleusercontent.com",
+  "clientSecret": "...",
+  "developerToken": "...",
+  "loginCustomerId": "1234567890",
+  "defaultCustomerId": "0987654321",
+  "defaultConversionActionNames": ["Demo Booked"]
+}
+```
+
+`loginCustomerId` is the manager account and is only needed when you reach the
+target account through one. Run `liam google auth login` and you are set.
 
 ## Packages
 
-- `@liads/core`: LinkedIn REST client, OAuth, resource modules, CSV + SHA256 hashing, Salesforce reader.
+- `@liads/shared`: the platform-neutral layer — OAuth, credential stores, retry policy, the change journal, period and KPI math.
+- `@liads/core`: LinkedIn REST client, resource modules, CSV + SHA256 hashing, Salesforce reader.
+- `@liads/google`: Google Ads REST client, GAQL reads, atomic mutate builder, Search campaign creation.
 - `@liads/mcp`: MCP server (stdio for local; reused by the hosted app). **Primary interface.**
-- `@liads/cli`: the `liam` CLI over the same core, for scripted batch runs.
+- `@liads/cli`: the `liam` CLI over the same engines, for scripted batch runs.
 - `@liads/web`: Next.js app that hosts the MCP over HTTP on Vercel.
 
 ## How it works
