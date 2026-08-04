@@ -262,6 +262,37 @@ test("GoogleAdsFailure is flattened into something actionable", () => {
   assert.deepEqual(flattenGoogleAdsErrors({ nonsense: true }).errors, []);
 });
 
+test("a searchStream failure is flattened even though it arrives array-wrapped", () => {
+  // Live 403 shape from googleAds:searchStream: the error rides inside the
+  // stream's chunk array rather than at the top level.
+  const { errors, requestId } = flattenGoogleAdsErrors([
+    {
+      error: {
+        code: 403,
+        message: "The caller does not have permission",
+        status: "PERMISSION_DENIED",
+        details: [
+          {
+            requestId: "M3L14hMaud2EA0q7VJNwKg",
+            errors: [
+              {
+                errorCode: { authorizationError: "DEVELOPER_TOKEN_NOT_APPROVED" },
+                message:
+                  "The developer token is only approved for use with test accounts. To access non-test accounts, apply for Basic or Standard access.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ]);
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].codeGroup, "authorizationError");
+  assert.equal(errors[0].code, "DEVELOPER_TOKEN_NOT_APPROVED");
+  assert.equal(errors[0].fieldPath, undefined, "an authorization error has no field path");
+  assert.equal(requestId, "M3L14hMaud2EA0q7VJNwKg");
+});
+
 test("money converts through micros without drift", () => {
   assert.equal(toMicros("12.34"), 12_340_000);
   assert.equal(toMicros(0.01), 10_000);

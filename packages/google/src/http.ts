@@ -66,7 +66,11 @@ export type GoogleMutationHook = (m: GoogleMutationEvent) => void | Promise<void
  * single most common complaint about this API.
  */
 export function flattenGoogleAdsErrors(body: unknown): { errors: GoogleAdsFieldError[]; requestId?: string } {
-  const details = (body as any)?.error?.details;
+  // searchStream wraps everything in an array, failures included, so a 403 from
+  // it arrives as [{ error: {...} }] rather than { error: {...} }. Unwrap that
+  // first or every streaming error reads as raw JSON.
+  const envelope = Array.isArray(body) ? body.find((c: any) => c?.error) : body;
+  const details = (envelope as any)?.error?.details;
   if (!Array.isArray(details)) return { errors: [] };
 
   const errors: GoogleAdsFieldError[] = [];
@@ -161,7 +165,8 @@ export class GoogleAdsClient {
 
       if (!res.ok) {
         const { errors, requestId } = flattenGoogleAdsErrors(data);
-        const fallback = (data as any)?.error?.message ?? text;
+        const envelope = Array.isArray(data) ? data.find((c: any) => c?.error) : data;
+        const fallback = (envelope as any)?.error?.message ?? text;
         throw new GoogleAdsApiError(describe(errors, fallback, res.status), res.status, data ?? text, errors, requestId);
       }
 
