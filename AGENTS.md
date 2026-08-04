@@ -119,10 +119,13 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
   ideas fail with an authorization error on an otherwise-working token, this is why.
 - **OAuth needs `access_type=offline` AND `prompt=consent`.** Without both, Google returns a
   refresh token on the first authorization only, and every re-auth after that returns none.
-- **Consent screen: External + In production.** A consent screen left in "Testing" issues
-  refresh tokens that die after 7 days. Internal (Workspace) also avoids that, but it is
-  **not** eligible for brand verification, which is the pilot that cuts Basic Access review
-  from days to hours and explicitly requires External + In production. Prefer External.
+- **Consent screen: anything but "Testing".** That status issues refresh tokens that die
+  after 7 days. Beyond that it is a trade, not a rule: **Internal** (Workspace orgs) is what
+  Google's OAuth docs recommend for a single-company tool and needs no verification;
+  **External + In production** is required for brand verification (the pilot that cuts Basic
+  Access review from days to hours), but `auth/adwords` is a **sensitive** scope, so a
+  published external app can require full OAuth app verification. Internal is the better
+  default here; Stan's project is Internal and works.
 - **`googleAds:mutate` is the write path.** It takes operations across resource types, resolves
   **temporary resource names** (negative ids, e.g. `customers/X/campaigns/-2`), and is atomic.
   Temp ids must be unique across the whole request even between types, and a child may only

@@ -115,11 +115,20 @@ Google Ads needs two things LinkedIn does not:
    creation and reporting work fine on Explorer.
 2. **An OAuth client**, from a Google Cloud project with the Google Ads API
    enabled. Use the "Desktop app" type, which accepts any `localhost` redirect.
-   Set the consent screen to **External** with publishing status **In
-   production**. Two reasons: an app left in "Testing" issues refresh tokens that
-   stop working after 7 days, and External + In production is a precondition for
-   the brand verification that fast-tracks a Basic Access application from days
-   to hours.
+
+   For the consent screen, **do not leave it in "Testing"** — that status issues
+   refresh tokens that stop working after 7 days. Beyond that it is a trade:
+
+   - **Internal** (Workspace orgs only) is what Google's OAuth docs recommend for
+     a single-company tool. Simplest, no verification, no 7-day expiry.
+   - **External + In production** is the precondition for *brand verification*,
+     the pilot that cuts Basic Access review from days to hours. The cost is that
+     `auth/adwords` is a **sensitive** scope, so a published external app can
+     require full OAuth app verification — potentially slower than the wait it
+     saves.
+
+   Internal is the better default for an internal tool. Choose External only if
+   the fast track is worth the verification risk.
 
 Then write `~/.liads/google.json`:
 
