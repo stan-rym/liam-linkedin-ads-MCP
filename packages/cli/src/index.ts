@@ -338,6 +338,8 @@ competitor
   .option("-e, --engine <engine>", "auto | api | scraper", "auto")
   .option("-m, --max <n>", "Max ads to collect", (v) => parseInt(v, 10), 50)
   .option("--no-deep", "auto: skip copy layering (API metadata only); scraper: skip per-ad detail — faster")
+  .option("--copy-max <n>", "Most ads to open detail pages for (default 50; each is a browser visit from your IP)", (v) => parseInt(v, 10))
+  .option("--concurrency <n>", "Parallel detail-page fetches (default 1; more risks a Cloudflare block)", (v) => parseInt(v, 10))
   .option("--headed", "Scraper: show the browser window (debug)")
   .option("--json", "Print raw JSON instead of a summary")
   .action(async (advertiser: string, opts) => {
@@ -350,6 +352,8 @@ competitor
       engine: opts.engine,
       max: opts.max,
       deep: opts.deep,
+      copyMax: opts.copyMax,
+      concurrency: opts.concurrency,
       headless: !opts.headed,
       onProgress: (m) => console.error(`… ${m}`),
     });

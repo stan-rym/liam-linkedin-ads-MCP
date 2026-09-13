@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import type { Page } from "playwright";
 /**
  * Competitor ad intelligence via the public LinkedIn Ad Library.
  *
@@ -18,6 +19,74 @@
 const AD_LIBRARY_BASE = "https://www.linkedin.com/ad-library";
 const DESKTOP_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+/**
+ * Scraper pacing defaults. The public library sits behind Cloudflare, which
+ * blocks the visitor's IP (the user's own browser included) once a headless
+ * session opens too many pages too fast. One page at a time with a pause
+ * between pages, capped at a few dozen pages per run, is the ceiling that has
+ * stayed under the radar. Callers may raise these deliberately.
+ */
+export const SCRAPER_DEFAULTS = {
+  /** Parallel detail-page fetches. */
+  concurrency: 1,
+  /** Pause between detail pages per worker, in ms. */
+  pageDelayMs: 1500,
+  /** Most ads to open detail pages for in one run. */
+  copyMax: 50,
+} as const;
+
+/** Thrown when LinkedIn's Cloudflare wall answers instead of the Ad Library. */
+export class AdLibraryBlockedError extends Error {
+  /** Detail pages fetched before the block. */
+  readonly pagesFetched: number;
+  /** Copy collected before the block, when the caller was layering copy. */
+  partialCopy?: Map<string, AdCopy>;
+  constructor(pagesFetched: number, where: string) {
+    super(
+      `LinkedIn blocked this IP while opening ${where} (Cloudflare "Sorry, you have been blocked"). ` +
+        `Stopped after ${pagesFetched} page(s) so the block stays short. It also hits the user's own browser, ` +
+        `so wait a few hours or switch networks before scraping again, and do not retry with other HTTP clients.`,
+    );
+    this.name = "AdLibraryBlockedError";
+    this.pagesFetched = pagesFetched;
+  }
+}
+
+/**
+ * True when a response is Cloudflare's block or challenge page rather than the
+ * library. A headless browser never passes the challenge, so both count.
+ */
+export function isBlockedPage(status: number | undefined, title: string, bodyText: string): boolean {
+  if (status === 403 || status === 429 || status === 503) return true;
+  if (/attention required!?\s*\|\s*cloudflare/i.test(title)) return true;
+  if (/just a moment/i.test(title) && /cloudflare|challenge/i.test(bodyText)) return true;
+  if (/sorry, you have been blocked/i.test(bodyText) && /cloudflare/i.test(bodyText)) return true;
+  return false;
+}
+
+/** Navigate, and throw AdLibraryBlockedError instead of parsing a block page. */
+async function gotoOrThrowIfBlocked(page: Page, url: string, pagesFetched: number, where: string): Promise<void> {
+  let status: number | undefined;
+  try {
+    const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    status = res?.status();
+  } catch (e) {
+    // Chrome surfaces a bodiless 4xx as this net error rather than a response.
+    if (/ERR_HTTP_RESPONSE_CODE_FAILURE/.test(e instanceof Error ? e.message : String(e))) {
+      throw new AdLibraryBlockedError(pagesFetched, where);
+    }
+    throw e;
+  }
+  const title = await page.title().catch(() => "");
+  const body =
+    status !== undefined && status >= 400
+      ? await page.evaluate(() => (document.body as HTMLElement | null)?.innerText ?? "").catch(() => "")
+      : "";
+  if (isBlockedPage(status, title, body)) throw new AdLibraryBlockedError(pagesFetched, where);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A single ad as shown on the Ad Library search results (card) level. */
 export interface AdLibraryCard {
@@ -72,8 +141,12 @@ export interface AdLibraryScanOptions {
   max?: number;
   /** Fetch each ad's detail page for run dates / impressions / targeting (default true). */
   deep?: boolean;
-  /** Parallel detail-page fetches when deep (default 4). */
+  /** Parallel detail-page fetches when deep (default 1; see SCRAPER_DEFAULTS). */
   concurrency?: number;
+  /** Pause between detail pages per worker in ms (default 1500). */
+  pageDelayMs?: number;
+  /** Most ads to open detail pages for in one run (default 50). */
+  copyMax?: number;
   /** Run the browser headless (default true). */
   headless?: boolean;
   /** Progress callback for long scans. */
@@ -86,6 +159,8 @@ export interface AdLibraryScan {
   totalReported?: number;
   /** How many ads we actually collected. */
   fetched: number;
+  /** Caveats about coverage, e.g. a detail-page cap or a Cloudflare block. */
+  note?: string;
   ads: AdLibraryAd[];
 }
 
@@ -272,11 +347,12 @@ function extractCopyInPage(): AdCopy {
  */
 export async function fetchAdCopyByIds(
   detailIds: string[],
-  opts: { concurrency?: number; headless?: boolean; onProgress?: (m: string) => void } = {},
+  opts: { concurrency?: number; pageDelayMs?: number; headless?: boolean; onProgress?: (m: string) => void } = {},
 ): Promise<Map<string, AdCopy>> {
   const out = new Map<string, AdCopy>();
   if (!detailIds.length) return out;
-  const concurrency = Math.max(1, opts.concurrency ?? 4);
+  const concurrency = Math.max(1, opts.concurrency ?? SCRAPER_DEFAULTS.concurrency);
+  const pageDelayMs = Math.max(0, opts.pageDelayMs ?? SCRAPER_DEFAULTS.pageDelayMs);
   const headless = opts.headless ?? true;
   const progress = opts.onProgress ?? (() => {});
 
@@ -285,17 +361,15 @@ export async function fetchAdCopyByIds(
     const ctx = await browser.newContext({ userAgent: DESKTOP_UA, viewport: { width: 1280, height: 1600 } });
     let idx = 0;
     let done = 0;
+    let blocked: AdLibraryBlockedError | undefined;
     const worker = async () => {
-      while (idx < detailIds.length) {
+      while (idx < detailIds.length && !blocked) {
         const my = idx++;
         const id = detailIds[my];
         if (!id) continue;
         const dp = await ctx.newPage();
         try {
-          await dp.goto(`https://www.linkedin.com/ad-library/detail/${id}`, {
-            waitUntil: "domcontentloaded",
-            timeout: 45000,
-          });
+          await gotoOrThrowIfBlocked(dp, `https://www.linkedin.com/ad-library/detail/${id}`, done, "an ad detail page");
           // The creative hydrates client-side; wait for the copy/preview to
           // appear rather than a fixed delay (a fixed wait missed slow pages).
           await dp
@@ -304,15 +378,21 @@ export async function fetchAdCopyByIds(
           await dp.waitForTimeout(400);
           const copy = (await dp.evaluate(extractCopyInPage)) as AdCopy;
           if (copy.commentary || copy.imageUrl || copy.headline) out.set(id, copy);
-        } catch {
-          /* skip a flaky page */
+        } catch (e) {
+          // A block ends the whole run; anything else is one flaky page.
+          if (e instanceof AdLibraryBlockedError) blocked = e;
         } finally {
           await dp.close().catch(() => {});
           progress(`Copy ${++done}/${detailIds.length}`);
         }
+        if (pageDelayMs && !blocked && idx < detailIds.length) await sleep(pageDelayMs);
       }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, detailIds.length) }, worker));
+    if (blocked) {
+      blocked.partialCopy = out;
+      throw blocked;
+    }
     return out;
   } finally {
     await browser.close().catch(() => {});
@@ -332,7 +412,9 @@ export async function scanAdLibrary(opts: AdLibraryScanOptions): Promise<AdLibra
   }
   const max = opts.max ?? 50;
   const deep = opts.deep ?? true;
-  const concurrency = Math.max(1, opts.concurrency ?? 4);
+  const concurrency = Math.max(1, opts.concurrency ?? SCRAPER_DEFAULTS.concurrency);
+  const pageDelayMs = Math.max(0, opts.pageDelayMs ?? SCRAPER_DEFAULTS.pageDelayMs);
+  const copyMax = Math.max(0, opts.copyMax ?? SCRAPER_DEFAULTS.copyMax);
   const headless = opts.headless ?? true;
   const progress = opts.onProgress ?? (() => {});
   const searchUrl = buildSearchUrl(opts);
@@ -342,7 +424,7 @@ export async function scanAdLibrary(opts: AdLibraryScanOptions): Promise<AdLibra
     const ctx = await browser.newContext({ userAgent: DESKTOP_UA, viewport: { width: 1280, height: 1600 } });
     const page = await ctx.newPage();
     progress(`Opening ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await gotoOrThrowIfBlocked(page, searchUrl, 0, "the Ad Library search page");
     await page.waitForTimeout(2500);
 
     // Total reported count, e.g. "9,081 ads".
@@ -389,17 +471,24 @@ export async function scanAdLibrary(opts: AdLibraryScanOptions): Promise<AdLibra
 
     const ads: AdLibraryAd[] = cards.map((c) => ({ ...c }));
 
+    let note: string | undefined;
     if (deep && ads.length) {
-      progress(`Fetching transparency detail for ${ads.length} ads (concurrency ${concurrency})...`);
+      const detailAds = ads.slice(0, copyMax);
+      if (detailAds.length < ads.length) {
+        note = `Detail pages capped at ${detailAds.length} of ${ads.length} ads (each is a browser visit from your IP); raise copyMax deliberately for more.`;
+      }
+      progress(`Fetching transparency detail for ${detailAds.length} ads (concurrency ${concurrency})...`);
       let idx = 0;
+      let done = 0;
+      let blocked: AdLibraryBlockedError | undefined;
       const worker = async () => {
-        while (idx < ads.length) {
+        while (idx < detailAds.length && !blocked) {
           const my = idx++;
-          const ad = ads[my];
+          const ad = detailAds[my];
           if (!ad) continue;
           const dp = await ctx.newPage();
           try {
-            await dp.goto(ad.detailUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
+            await gotoOrThrowIfBlocked(dp, ad.detailUrl, done, "an ad detail page");
             await dp.waitForTimeout(2200);
             const raw = (await dp.evaluate(extractDetailInPage)) as {
               innerText: string;
@@ -411,15 +500,23 @@ export async function scanAdLibrary(opts: AdLibraryScanOptions): Promise<AdLibra
             if (raw.headline) detail.headline = raw.headline;
             if (raw.cta) detail.cta = raw.cta;
             ad.detail = detail;
-          } catch {
-            /* skip a flaky detail page; keep the card */
+          } catch (e) {
+            // A block ends the run and keeps the cards; anything else is one flaky page.
+            if (e instanceof AdLibraryBlockedError) blocked = e;
           } finally {
             await dp.close().catch(() => {});
+            done++;
           }
+          if (pageDelayMs && !blocked && idx < detailAds.length) await sleep(pageDelayMs);
         }
       };
-      await Promise.all(Array.from({ length: Math.min(concurrency, ads.length) }, worker));
-      progress("Detail fetch complete.");
+      await Promise.all(Array.from({ length: Math.min(concurrency, detailAds.length) }, worker));
+      if (blocked) {
+        progress(blocked.message);
+        note = [note, blocked.message].filter(Boolean).join(" ");
+      } else {
+        progress("Detail fetch complete.");
+      }
     }
 
     return {
@@ -432,6 +529,7 @@ export async function scanAdLibrary(opts: AdLibraryScanOptions): Promise<AdLibra
       },
       totalReported,
       fetched: ads.length,
+      note,
       ads,
     };
   } finally {
