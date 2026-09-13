@@ -91,6 +91,39 @@ export const CampaignInputSchema = z.object({
 });
 export type CampaignInput = z.infer<typeof CampaignInputSchema>;
 
+/**
+ * Patch an existing campaign ("ad group"). Every field is optional: only the
+ * ones provided are changed (LinkedIn PARTIAL_UPDATE). Targeting is replaced
+ * wholesale when any targeting form is given — pass a structured `targeting`
+ * spec, the `audienceSegmentUrn` (+ optional `geoUrns`) shorthand, or a raw
+ * `targetingCriteria`. Leave all three unset to keep the current targeting.
+ */
+export const CampaignUpdateSchema = z.object({
+  accountId: z.string(),
+  campaignId: z.string().describe("Numeric campaign (ad group) id to update"),
+  /** Raw targetingCriteria tree (replaces existing). Prefer `targeting`/`audienceSegmentUrn`. */
+  targetingCriteria: z.record(z.any()).optional(),
+  /** Structured targeting (facets + entity URNs). Replaces existing targeting. */
+  targeting: TargetingSpecSchema.optional(),
+  audienceSegmentUrn: z
+    .string()
+    .optional()
+    .describe("urn:li:adSegment:... (or bare id) matched audience to target — replaces existing targeting"),
+  geoUrns: z.array(z.string()).optional().describe("urn:li:geo:... locations to include alongside the audience"),
+  /** When replacing targeting, merge the standing default exclusions in. Set false to skip. */
+  applyDefaultExclusions: z.boolean().default(true),
+  /** Other patchable fields (each left unchanged when omitted). */
+  name: z.string().min(1).optional(),
+  status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+  dailyBudget: MoneySchema.optional(),
+  totalBudget: MoneySchema.optional(),
+  unitCost: MoneySchema.optional().describe("Bid amount"),
+  runSchedule: RunScheduleSchema.optional(),
+  /** Build and return the patch WITHOUT sending it. Preview before touching a live campaign. */
+  dryRun: z.boolean().default(false),
+});
+export type CampaignUpdateInput = z.infer<typeof CampaignUpdateSchema>;
+
 export const TextAdCreativeSchema = z.object({
   accountId: z.string(),
   campaignId: z.string(),

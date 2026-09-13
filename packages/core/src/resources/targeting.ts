@@ -21,7 +21,8 @@ export const COMMON_FACETS: Record<string, string> = {
   skills: "urn:li:skill",
   employers: "urn:li:organization",
   employersPast: "urn:li:organization",
-  audienceMatchingSegments: "urn:li:adSegment",
+  audienceMatchingSegments: "urn:li:adSegment", // uploaded/matched lists (contact/company)
+  dynamicSegments: "urn:li:adSegment", // behavioral/retargeting audiences (ad engagers, site visitors, video viewers)
   interests: "urn:li:interest",
   degrees: "urn:li:degree",
   fieldsOfStudy: "urn:li:fieldOfStudy",

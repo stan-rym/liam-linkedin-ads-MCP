@@ -30,6 +30,10 @@ import {
   listCampaigns,
   listCreatives,
   deleteAd,
+  getCampaign,
+  updateCampaign,
+  adSegmentUrn,
+  MIN_AUDIENCE_TO_SERVE,
 } from "@liads/core";
 import { registerGoogleCommands } from "./google.js";
 
@@ -426,6 +430,83 @@ campaigns
     }
     const orphans = list.filter((c) => !groupName.has(c.campaignGroupId));
     for (const c of orphans) console.log(`? ${c.id}\t${c.status}\t${c.name} (group ${c.campaignGroupId})`);
+  });
+
+campaigns
+  .command("get <campaignId>")
+  .description("Show a campaign (ad group): status, name, and its current targeting")
+  .option("--account <accountId>", "ad account id (defaults to config)")
+  .action(async (campaignId, opts) => {
+    const liads = await createLiads();
+    const accountId = opts.account ?? (await requireDefaultAccountId());
+    const c = (await getCampaign(liads.client, accountId, campaignId)) as Record<string, unknown>;
+    console.log(`${c.id ?? campaignId}\t${c.status ?? ""}\t${c.name ?? ""}`);
+    console.log("targetingCriteria:");
+    console.log(JSON.stringify(c.targetingCriteria ?? {}, null, 2));
+  });
+campaigns
+  .command("update <campaignId>")
+  .description("Update a campaign (ad group) in place. Previews by default; add --apply to send.")
+  .option("--account <accountId>", "ad account id (defaults to config)")
+  .option("--audience <urnOrId>", "matched audience to target (adSegment urn or bare id) — replaces targeting")
+  .option("--geo <urns...>", "geo urns to include alongside the audience")
+  .option("--targeting <json>", "structured targeting spec as JSON, e.g. '{\"include\":{...}}'")
+  .option("--no-default-exclusions", "do not merge the standing default exclusions into new targeting")
+  .option("--name <name>", "rename the campaign")
+  .option("--status <status>", "DRAFT | ACTIVE | PAUSED | ARCHIVED")
+  .option("--daily-budget <amount>", "daily budget amount, e.g. 100.00")
+  .option("--total-budget <amount>", "total budget amount")
+  .option("--bid <amount>", "bid (unit cost) amount")
+  .option("--currency <code>", "currency for budgets/bid (default USD)", "USD")
+  .option("--apply", "actually send the update (otherwise just preview the patch)")
+  .action(async (campaignId, opts) => {
+    const liads = await createLiads();
+    const accountId = opts.account ?? (await requireDefaultAccountId());
+    const money = (amount?: string) => (amount ? { amount, currencyCode: opts.currency } : undefined);
+
+    const targeting = opts.targeting ? JSON.parse(opts.targeting) : undefined;
+    const input = {
+      accountId,
+      campaignId,
+      audienceSegmentUrn: opts.audience ? adSegmentUrn(opts.audience) : undefined,
+      geoUrns: opts.geo,
+      targeting,
+      applyDefaultExclusions: opts.defaultExclusions !== false,
+      name: opts.name,
+      status: opts.status,
+      dailyBudget: money(opts.dailyBudget),
+      totalBudget: money(opts.totalBudget),
+      unitCost: money(opts.bid),
+      dryRun: !opts.apply,
+    };
+
+    // When targeting is being replaced with a derivable spec, estimate the reach
+    // so we catch the >=300 members-to-serve floor before (or as) we apply it.
+    let spec: { include: Record<string, string[]>; exclude?: Record<string, string[]> } | undefined;
+    if (targeting) spec = targeting;
+    else if (opts.audience) {
+      const include: Record<string, string[]> = { audienceMatchingSegments: [adSegmentUrn(opts.audience)] };
+      if (opts.geo?.length) include.locations = opts.geo;
+      spec = { include };
+    }
+    if (spec) {
+      try {
+        const est = await estimateAudience(liads.client, spec);
+        const flag = est.total < MIN_AUDIENCE_TO_SERVE ? `  [WARNING] below ${MIN_AUDIENCE_TO_SERVE}, will NOT serve (note: forecast reads 0 for dynamicSegments/retargeting audiences — verify real size in CM)` : "";
+        console.log(`Estimated audience: ${est.total} total (${est.active} active)${flag}`);
+      } catch (e) {
+        console.log(`(could not estimate audience: ${e instanceof Error ? e.message : e})`);
+      }
+    }
+
+    const res = await updateCampaign(liads.client, input as Parameters<typeof updateCampaign>[1]);
+    if (res.dryRun) {
+      console.log(`\nDRY RUN — nothing sent. Patch for campaign ${campaignId} (fields: ${res.updated.join(", ")}):`);
+      console.log(JSON.stringify(res.patch, null, 2));
+      console.log("\nRe-run with --apply to send this update.");
+    } else {
+      console.log(`Updated campaign ${res.id} (fields: ${res.updated.join(", ")}).`);
+    }
   });
 
 const ad = program.command("ad").description("Individual ads (creatives)");

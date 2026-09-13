@@ -17,6 +17,7 @@ import {
   SalesforceAudienceSchema,
   createCampaignGroup,
   createCampaign,
+  updateCampaign,
   createTextAdCreative,
   createSponsoredImageDraft,
   launchFromBrief,
@@ -29,6 +30,7 @@ import {
   TrendQuerySchema,
   CampaignGroupInputSchema,
   CampaignInputSchema,
+  CampaignUpdateSchema,
   TextAdCreativeSchema,
   SponsoredImageCreativeSchema,
   LaunchFromBriefSchema,
@@ -277,6 +279,20 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
       try {
         const liads = await createLiads();
         return ok(await createCampaign(liads.client, CampaignInputSchema.parse(args)));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.tool(
+    "update_campaign",
+    "Update an existing campaign (the 'ad group') in place: change its targeting and/or name, status, budget, bid, schedule. Only the fields you pass change. Targeting is REPLACED when you pass any targeting form — a structured `targeting` spec, the `audienceSegmentUrn` (+ optional `geoUrns`) shorthand, or a raw `targetingCriteria`; default exclusions are re-applied unless applyDefaultExclusions=false. Audience Expansion / Audience Network stay off. Pass dryRun=true first to preview the patch before touching a live campaign.",
+    CampaignUpdateSchema.shape,
+    async (args) => {
+      try {
+        const liads = await createLiads();
+        return ok(await updateCampaign(liads.client, CampaignUpdateSchema.parse(args)));
       } catch (e) {
         return fail(e);
       }

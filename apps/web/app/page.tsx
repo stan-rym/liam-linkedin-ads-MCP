@@ -228,6 +228,8 @@ export default function Home() {
         <span>Unofficial. Not affiliated with or endorsed by LinkedIn.</span>
         <span style={{ display: "inline-flex", gap: 24 }}>
           <a href="/docs">Docs</a>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
           <a href={REPO} target="_blank" rel="noreferrer">
             github.com/stan-default/liam ↗
           </a>

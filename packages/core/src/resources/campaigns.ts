@@ -1,7 +1,7 @@
 import type { LinkedInClient } from "../http.js";
 import { searchAll } from "./search.js";
-import type { CampaignInput } from "../schemas.js";
-import { sponsoredAccountUrn, campaignGroupUrn } from "../urns.js";
+import type { CampaignInput, CampaignUpdateInput } from "../schemas.js";
+import { sponsoredAccountUrn, campaignGroupUrn, adSegmentUrn } from "../urns.js";
 import { buildTargetingCriteria, geoSegmentSpec, withDefaultExclusions } from "./targeting.js";
 import { associateCampaignWithConversion, resolveConversionIdByName } from "./conversions.js";
 import { loadConfig, resolveDefaultConversionNames } from "../config.js";
@@ -77,6 +77,81 @@ export async function createCampaign(
 export async function getCampaign(client: LinkedInClient, accountId: string, campaignId: string) {
   const res = await client.request({ path: `/adAccounts/${accountId}/adCampaigns/${campaignId}` });
   return res.data;
+}
+
+export interface CampaignUpdateResult {
+  id: string;
+  /** Names of the fields included in the patch. */
+  updated: string[];
+  /** The targetingCriteria that was set, when targeting was changed. */
+  targetingCriteria?: Record<string, unknown>;
+  /** True when dryRun: the patch was built and returned but NOT sent. */
+  dryRun?: boolean;
+  /** The full PARTIAL_UPDATE $set payload (handy for review on a dry run). */
+  patch?: Record<string, unknown>;
+}
+
+/**
+ * Patch an existing campaign ("ad group") in place via LinkedIn PARTIAL_UPDATE.
+ * Only the fields provided are changed. Targeting is replaced wholesale when any
+ * targeting form is supplied (structured spec, audienceSegmentUrn shorthand, or
+ * raw targetingCriteria) — built through the SAME helpers as createCampaign, so
+ * the standing default exclusions and the include/exclude tree stay identical.
+ * The Audience Expansion / Audience Network off-switches are campaign-create
+ * settings and are never re-enabled here. With dryRun the patch is returned but
+ * not sent, so callers can preview a change before touching a live campaign.
+ */
+export async function updateCampaign(
+  client: LinkedInClient,
+  input: CampaignUpdateInput,
+): Promise<CampaignUpdateResult> {
+  const patch: Record<string, unknown> = {};
+
+  const hasTargeting =
+    input.targetingCriteria !== undefined ||
+    input.targeting !== undefined ||
+    input.audienceSegmentUrn !== undefined ||
+    (input.geoUrns?.length ?? 0) > 0;
+
+  let targetingCriteria: Record<string, unknown> | undefined;
+  if (hasTargeting) {
+    const base =
+      input.targetingCriteria ??
+      buildTargetingCriteria(
+        input.targeting ??
+          geoSegmentSpec(
+            input.geoUrns,
+            input.audienceSegmentUrn ? adSegmentUrn(input.audienceSegmentUrn) : undefined,
+          ),
+      );
+    targetingCriteria =
+      (input.applyDefaultExclusions ?? true) ? withDefaultExclusions(base) : base;
+    patch.targetingCriteria = targetingCriteria;
+  }
+
+  if (input.name !== undefined) patch.name = input.name;
+  if (input.status !== undefined) patch.status = input.status;
+  if (input.dailyBudget !== undefined) patch.dailyBudget = input.dailyBudget;
+  if (input.totalBudget !== undefined) patch.totalBudget = input.totalBudget;
+  if (input.unitCost !== undefined) patch.unitCost = input.unitCost;
+  if (input.runSchedule !== undefined) patch.runSchedule = input.runSchedule;
+
+  const updated = Object.keys(patch);
+  if (updated.length === 0) {
+    throw new Error("Nothing to update: provide targeting and/or a field to change.");
+  }
+
+  if (input.dryRun) {
+    return { id: input.campaignId, updated, targetingCriteria, dryRun: true, patch };
+  }
+
+  await client.request({
+    method: "POST",
+    path: `/adAccounts/${input.accountId}/adCampaigns/${input.campaignId}`,
+    headers: { "X-RestLi-Method": "PARTIAL_UPDATE" },
+    body: { patch: { $set: patch } },
+  });
+  return { id: input.campaignId, updated, targetingCriteria };
 }
 
 /** Change a campaign's status (e.g. archive cleanup). */

@@ -669,9 +669,13 @@ liam lift <level> <id> [-w <days>]      # before vs after performance per record
 
       <footer className="footer">
         <span>Unofficial. Not affiliated with or endorsed by LinkedIn.</span>
-        <a href={REPO} target="_blank" rel="noreferrer">
-          github.com/stan-default/liam ↗
-        </a>
+        <span style={{ display: "inline-flex", gap: 24 }}>
+          <a href="/terms">Terms</a>
+          <a href="/privacy">Privacy</a>
+          <a href={REPO} target="_blank" rel="noreferrer">
+            github.com/stan-default/liam ↗
+          </a>
+        </span>
       </footer>
     </div>
   );
