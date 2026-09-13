@@ -113,7 +113,7 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
   ids go in without hyphens.
 - **Developer token** comes from a **manager** account's API Center. A plain client account
   cannot issue one. Google usually auto-grants Explorer (2,880 production ops/day); Basic
-  (15,000/day) is a separate application.
+  (15,000/day) is a separate application. Stan's token has Basic access as of 2026-09-13.
 - **Explorer access blocks KeywordPlanService**, so `generateKeywordIdeas` needs **Basic**.
   Campaign creation, structure reads, and GAQL reporting all work on Explorer. If keyword
   ideas fail with an authorization error on an otherwise-working token, this is why.
@@ -151,10 +151,19 @@ modules are thin typed wrappers over `LinkedInClient.request()`.
   only keyword criteria are `ENABLED`, since nothing serves under a paused parent. There is no
   activate tool, matching LinkedIn's draft-only rule. `packages/google/test/launch.test.mjs`
   asserts this against a stubbed transport — keep it passing.
-- **Untested against a live account at time of writing** (no developer token yet): the campaign
-  `startDateTime` format is documented as `"YYYY-MM-DD HH:MM:SS"` but Google's own samples show
-  `"YYYYMMDD HH:MM:SS"`. Liam omits the field unless a brief sets it, so the default path avoids
-  the question; if a dry run rejects it, try the other format.
+- **Temp names only on referenced parents.** Composite-key resources (campaign criteria, ad
+  group criteria, ad group ads, campaign shared sets) have ids like `parent~child`, and a negative
+  temp id on them fails with `requestError.BAD_RESOURCE_ID`. `MutateBatch.add` appends them
+  unnamed; `MutateBatch.create` (which hands out a temp name) is for budget, campaign, and ad
+  groups only. The launch test asserts this split.
+- **`path2` requires `path1`** on a responsive search ad, or Google returns
+  `fieldError.VALUE_MUST_BE_UNSET`. The brief schema refuses `path2` alone.
+- **Verified live with `validateOnly` on 2026-09-13** against the Default account (6022535221):
+  the full example brief passes Google's validators end to end. Both `startDateTime` formats,
+  `"YYYY-MM-DD HH:MM:SS"` (documented) and `"YYYYMMDD HH:MM:SS"` (Google's samples), were
+  accepted by the dry run, so Liam passes the field through as given. A real `--apply` has not
+  been run yet; the first real launch is the live test of the result parsing in
+  `createdResourceNames` and the `~`-split ad ids.
 
 ## Build / verify
 

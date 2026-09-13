@@ -44,6 +44,10 @@ search ad. Ask for what is missing rather than inventing it.
 Name ad groups so the angle is legible (theme, match type, persona), because
 later analysis reads intent off the names.
 
+Display paths: `path2` requires `path1`. Google rejects `path2` on its own and
+the brief schema refuses it before the call, so put a lone path segment in
+`path1`.
+
 ## Step 2: research keywords before quoting anything
 
 Never accept a keyword list at face value. Run `gads_keyword_ideas` on the seeds
