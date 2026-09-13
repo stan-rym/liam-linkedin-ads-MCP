@@ -43,7 +43,14 @@ export const ResponsiveSearchAdSchema = z.object({
   /** Falls back to the campaign-level finalUrl when omitted. */
   finalUrl: z.string().url().optional(),
   path1: z.string().max(15).optional().describe("First display-URL path segment"),
-  path2: z.string().max(15).optional().describe("Second display-URL path segment"),
+  path2: z
+    .string()
+    .max(15)
+    .optional()
+    .describe("Second display-URL path segment. Requires path1: Google rejects path2 on its own."),
+}).refine((ad) => !ad.path2 || !!ad.path1, {
+  message: "path2 requires path1 (Google: VALUE_MUST_BE_UNSET on responsive_search_ad.path2)",
+  path: ["path2"],
 });
 export type ResponsiveSearchAdInput = z.infer<typeof ResponsiveSearchAdSchema>;
 

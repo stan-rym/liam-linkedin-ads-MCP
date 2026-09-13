@@ -62,7 +62,8 @@ const keywordCriterion = (kw: KeywordInput) => ({ keyword: { text: kw.text, matc
  *
  * Order matters: Google resolves temporary resource names sequentially, so the
  * budget must be added before the campaign that references it, and the ad group
- * before its keywords and ads.
+ * before its keywords and ads. Only budget, campaign, and ad groups carry temp
+ * names; criteria, ads, and shared-set links are leaves and go in unnamed.
  *
  * Nothing here can create an enabled entity. The campaign, its ad groups, and
  * its ads are all PAUSED; only keyword criteria are ENABLED, because a paused
@@ -130,10 +131,10 @@ export async function launchSearchCampaign(
 
   // 3. Campaign criteria: where and in what language, plus any negatives.
   for (const geoTargetConstant of geoTargets) {
-    batch.create("campaignCriterionOperation", "campaignCriteria", { campaign, location: { geoTargetConstant } });
+    batch.add("campaignCriterionOperation", { campaign, location: { geoTargetConstant } });
   }
   for (const languageConstant of languages) {
-    batch.create("campaignCriterionOperation", "campaignCriteria", { campaign, language: { languageConstant } });
+    batch.add("campaignCriterionOperation", { campaign, language: { languageConstant } });
   }
   plan.push({
     kind: "Targeting",
@@ -142,7 +143,7 @@ export async function launchSearchCampaign(
   });
 
   for (const kw of brief.negativeKeywords ?? []) {
-    batch.create("campaignCriterionOperation", "campaignCriteria", {
+    batch.add("campaignCriterionOperation", {
       campaign,
       negative: true,
       ...keywordCriterion(kw),
@@ -153,7 +154,7 @@ export async function launchSearchCampaign(
   }
 
   if (brief.negativeKeywordListId) {
-    batch.create("campaignSharedSetOperation", "campaignSharedSets", {
+    batch.add("campaignSharedSetOperation", {
       campaign,
       sharedSet: `customers/${customerId}/sharedSets/${brief.negativeKeywordListId}`,
     });
@@ -178,7 +179,7 @@ export async function launchSearchCampaign(
     });
 
     for (const kw of group.keywords) {
-      batch.create("adGroupCriterionOperation", "adGroupCriteria", {
+      batch.add("adGroupCriterionOperation", {
         adGroup,
         status: "ENABLED",
         ...keywordCriterion(kw),
@@ -186,7 +187,7 @@ export async function launchSearchCampaign(
       keywordCount++;
     }
     for (const kw of group.negativeKeywords ?? []) {
-      batch.create("adGroupCriterionOperation", "adGroupCriteria", {
+      batch.add("adGroupCriterionOperation", {
         adGroup,
         negative: true,
         ...keywordCriterion(kw),
@@ -194,7 +195,7 @@ export async function launchSearchCampaign(
     }
 
     for (const ad of group.ads) {
-      batch.create("adGroupAdOperation", "adGroupAds", {
+      batch.add("adGroupAdOperation", {
         adGroup,
         status: "PAUSED",
         ad: {

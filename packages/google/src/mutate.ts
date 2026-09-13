@@ -35,6 +35,8 @@ export const fromMicros = (micros: number | string): number =>
  * between resource types, so one counter serves every collection. Google
  * resolves them in order, so a parent must be added before any child that
  * references it — which the ordering of `create` calls naturally enforces.
+ * Only resources a later operation points at get a temp name; leaves go through
+ * `add` with no name at all (see there for why).
  */
 export class MutateBatch {
   private readonly ops: MutateOperation[] = [];
@@ -52,6 +54,17 @@ export class MutateBatch {
     const resourceName = `customers/${this.customerId}/${collection}/-${this.counter}`;
     this.ops.push({ [operationField]: { create: { resourceName, ...resource } } });
     return resourceName;
+  }
+
+  /**
+   * Append a create for a resource nothing else in the batch references, and
+   * so needs no temporary name. Composite-key resources (campaign criteria,
+   * ad group criteria, ad group ads, campaign shared sets) have ids of the form
+   * `parent~child`, and Google rejects a bare negative id on them with
+   * BAD_RESOURCE_ID. Leave the name off and Google assigns it.
+   */
+  add(operationField: string, resource: Record<string, unknown>): void {
+    this.ops.push({ [operationField]: { create: resource } });
   }
 
   /** Append a partial update. `updateMask` lists exactly the fields being set. */

@@ -3,25 +3,57 @@
   "dailyBudget": 150,
   "cpcBid": 12,
   "finalUrl": "https://www.default.com/platform",
-  "locations": ["US"],
-  "languages": ["en"],
-  "conversionActionNames": ["REPLACE_WITH_CONVERSION_ACTION_NAME"],
+  "locations": [
+    "US"
+  ],
+  "languages": [
+    "en"
+  ],
+  "conversionActionNames": [
+    "REPLACE_WITH_CONVERSION_ACTION_NAME"
+  ],
   "negativeKeywords": [
-    { "text": "jobs", "matchType": "BROAD" },
-    { "text": "salary", "matchType": "BROAD" },
-    { "text": "free", "matchType": "BROAD" },
-    { "text": "tutorial", "matchType": "BROAD" }
+    {
+      "text": "jobs",
+      "matchType": "BROAD"
+    },
+    {
+      "text": "salary",
+      "matchType": "BROAD"
+    },
+    {
+      "text": "free",
+      "matchType": "BROAD"
+    },
+    {
+      "text": "tutorial",
+      "matchType": "BROAD"
+    }
   ],
   "adGroups": [
     {
       "name": "RevOps automation — exact",
       "cpcBid": 15,
       "keywords": [
-        { "text": "revops automation", "matchType": "EXACT" },
-        { "text": "revenue operations software", "matchType": "EXACT" },
-        { "text": "revops platform", "matchType": "PHRASE" }
+        {
+          "text": "revops automation",
+          "matchType": "EXACT"
+        },
+        {
+          "text": "revenue operations software",
+          "matchType": "EXACT"
+        },
+        {
+          "text": "revops platform",
+          "matchType": "PHRASE"
+        }
       ],
-      "negativeKeywords": [{ "text": "certification", "matchType": "BROAD" }],
+      "negativeKeywords": [
+        {
+          "text": "certification",
+          "matchType": "BROAD"
+        }
+      ],
       "ads": [
         {
           "headlines": [
@@ -42,8 +74,14 @@
     {
       "name": "Lead routing — exact",
       "keywords": [
-        { "text": "lead routing software", "matchType": "EXACT" },
-        { "text": "lead assignment tool", "matchType": "PHRASE" }
+        {
+          "text": "lead routing software",
+          "matchType": "EXACT"
+        },
+        {
+          "text": "lead assignment tool",
+          "matchType": "PHRASE"
+        }
       ],
       "ads": [
         {
@@ -57,7 +95,7 @@
             "Assign every inbound lead the moment it lands, with rules your team can actually read.",
             "Cut speed to lead from hours to seconds. Connect Salesforce in minutes."
           ],
-          "path2": "routing"
+          "path1": "routing"
         }
       ]
     }

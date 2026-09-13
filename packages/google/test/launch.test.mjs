@@ -141,11 +141,23 @@ test("every write is validated server-side before anything is persisted", async 
   assert.equal(real.result.adGroupIds.length, 2);
 });
 
-test("temporary resource names are unique, negative, and defined before use", async () => {
+test("temporary resource names go only on referenced parents, are unique, and are defined before use", async () => {
   const { ops } = await buildOps();
-  const names = ops.map((o) => Object.values(o)[0].create.resourceName);
+  const PARENTS = ["campaignBudgetOperation", "campaignOperation", "adGroupOperation"];
+
+  const names = [];
+  for (const op of ops) {
+    const [field, { create }] = Object.entries(op)[0];
+    if (PARENTS.includes(field)) {
+      assert.match(create.resourceName, /\/-\d+$/, `${field} needs a temp name for its children to point at`);
+      names.push(create.resourceName);
+    } else {
+      // Live Google rejects a temp name on composite-key leaves (criteria, ads,
+      // shared-set links) with BAD_RESOURCE_ID. They must go in unnamed.
+      assert.equal(create.resourceName, undefined, `${field} must not carry a temp resource name`);
+    }
+  }
   assert.equal(new Set(names).size, names.length, "temp ids must be unique across the whole request");
-  assert.ok(names.every((n) => /\/-\d+$/.test(n)));
 
   // Google resolves temp names in order, so a reference may only point backwards.
   const seen = new Set();
@@ -154,7 +166,7 @@ test("temporary resource names are unique, negative, and defined before use", as
     for (const ref of [create.campaignBudget, create.campaign, create.adGroup]) {
       if (ref) assert.ok(seen.has(ref), `${ref} referenced before it was created`);
     }
-    seen.add(create.resourceName);
+    if (create.resourceName) seen.add(create.resourceName);
   }
 });
 
@@ -219,6 +231,11 @@ test("a brief that would waste a live call is rejected first", () => {
   bad(
     { adGroups: [{ ...group, ads: [{ headlines: ["a", "b", "c"], descriptions: ["x".repeat(91), "b"] }] }] },
     "description over 90 chars",
+  );
+  // Live Google: fieldError.VALUE_MUST_BE_UNSET on responsive_search_ad.path2.
+  bad(
+    { adGroups: [{ ...group, ads: [{ headlines: ["a", "b", "c"], descriptions: ["a", "b"], path2: "routing" }] }] },
+    "path2 without path1",
   );
 });
 
