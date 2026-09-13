@@ -215,7 +215,12 @@ export const AdLibraryScanSchema = z.object({
     "auto = official API for metadata + scraper for copy (falls back to pure scraper if the API isn't provisioned); api = official API only, metadata no copy (works hosted); scraper = browser only (local, no auth)",
   ),
   deep: z.boolean().default(true).describe("auto: also layer in ad copy from the public library; scraper: fetch each ad's detail page for run dates / impressions / targeting"),
-  concurrency: z.number().int().positive().max(8).default(4).describe("Scraper: parallel detail-page fetches when deep"),
+  concurrency: z.number().int().positive().max(4).default(1).describe(
+    "Scraper: parallel detail-page fetches when deep. Default 1; LinkedIn's Cloudflare blocks the IP (the user's own browser included) when pages arrive too fast",
+  ),
+  copyMax: z.number().int().nonnegative().max(500).default(50).describe(
+    "Most ads to open detail pages for in one run (copy in auto, detail in scraper). Each page is a browser visit from the user's IP; raise deliberately",
+  ),
 });
 export type AdLibraryScanInput = z.infer<typeof AdLibraryScanSchema>;
 

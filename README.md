@@ -380,7 +380,10 @@ See [skills/README.md](./skills/README.md) for details and conventions.
   (`engine`): `api` (metadata only, fast, works hosted), `scraper` (copy via browser, local, supports
   company-id), and `auto` (default: API metadata plus copy layered from each ad's detail page, falling
   back to the scraper if the API isn't provisioned). Search by `advertiser` name or `keyword` (the API
-  has no company-id or date filter). CLI: `liam competitor ads`.
+  has no company-id or date filter). The scraper is paced to protect the user's IP: detail pages are
+  capped at `copyMax` (50) per run, fetched one at a time (`concurrency` 1) with a pause between pages,
+  and the run stops at the first Cloudflare block and says so in `note` (a block also locks the user's
+  own browser out of the Ad Library for a few hours). CLI: `liam competitor ads`.
 - **Change journal & lift:** `log_ad_change` (record a change), `list_ad_changes`, `compute_lift`
   (before-vs-after performance for each recorded change). Liam auto-journals every change it makes;
   see [Change journal & lift](#change-journal--lift) below.
@@ -421,6 +424,7 @@ liam launch --brief <brief.json>        # audience + group + campaign + draft cr
 liam competitor ads <advertiser>        # any company's ads from the public Ad Library
                                         #   <advertiser> = name, company id, or company URL
                                         #   -k <keyword> -c <countries> -e auto|api|scraper -m <max> --json
+                                        #   --copy-max <n> (detail pages per run, 50) --concurrency <n> (1) --headed
 liam changelog list [-t <type>] [-i <id>]           # recorded ad changes, newest first
 liam changelog add -t <type> -i <id> -f <field> --after <v> [-l <label>]   # log a change made elsewhere
 liam lift <level> <id> [-w <days>]      # before-vs-after performance for each recorded change

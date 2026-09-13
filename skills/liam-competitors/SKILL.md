@@ -27,8 +27,18 @@ Ad Library.
   local browser (the only engine on a hosted MCP); `scraper` drives a local Chrome and
   gets copy without the API grant.
 - **Volume.** Default cap is 50 ads; raise `--max` for big advertisers (the API
-  reports the advertiser-wide total, quote it for context). Deep copy fetches cost a
-  detail-page visit per ad, so very large pulls take minutes.
+  reports the advertiser-wide total, quote it for context). Metadata from the API is
+  cheap at any size. Copy is not: every ad's copy is a browser visit to LinkedIn from
+  the user's own IP, so Liam opens at most `copyMax` (50) detail pages per run, one at
+  a time with a pause. For a big advertiser, pull metadata at a high `--max` and read
+  copy from the capped sample; raise `copyMax` only when the user asks for more copy
+  and knows the cost.
+- **If LinkedIn blocks the scraper.** Liam stops at the first Cloudflare block and
+  reports it in `note`. Treat that as final for the session: do not retry the scraper,
+  and never probe the pages with curl, fetch, or a browser-automation tool. The block
+  is on the IP and also locks the user out of the Ad Library in their own browser for
+  a few hours. Say so, hand over the metadata read, and offer to fetch copy later or
+  from another network.
 - **EU bonus data.** Ads served in the EU carry run dates, impression ranges,
   per-country splits, and structured targeting facets. Use them; they are the closest
   thing to seeing a competitor's media plan.

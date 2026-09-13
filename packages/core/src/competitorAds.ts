@@ -19,6 +19,8 @@
 import {
   scanAdLibrary,
   fetchAdCopyByIds,
+  AdLibraryBlockedError,
+  SCRAPER_DEFAULTS,
   type AdLibraryScanOptions,
   type AdLibraryScan,
   type AdLibraryAd,
@@ -69,12 +71,35 @@ export async function scanCompetitorAds(opts: CompetitorAdsOptions): Promise<Com
         // Layer in ad copy by opening each ad's own detail page (guaranteed
         // coverage — the API and the public search list don't return the same
         // ad sets, so joining on a search scrape would miss most ads).
+        //
+        // Every page is a browser visit from the user's IP, and LinkedIn's
+        // Cloudflare blocks the IP (their own browser included) when too many
+        // arrive too fast. So: cap the pages, fetch them one at a time with a
+        // pause, and stop at the first block instead of hammering on.
+        const ids = ads.map((a) => a.detailId).filter(Boolean);
+        const copyMax = Math.max(0, opts.copyMax ?? SCRAPER_DEFAULTS.copyMax);
+        const targetIds = ids.slice(0, copyMax);
+        const capNote =
+          targetIds.length < ids.length
+            ? ` Detail pages capped at ${targetIds.length} of ${ids.length} ads (each is a browser visit from your IP); raise copyMax deliberately for more.`
+            : "";
         try {
-          progress(`Layering in ad copy from ${ads.length} detail pages...`);
-          const copyById = await fetchAdCopyByIds(
-            ads.map((a) => a.detailId).filter(Boolean),
-            { concurrency: opts.concurrency, headless: opts.headless, onProgress: progress },
-          );
+          progress(`Layering in ad copy from ${targetIds.length} detail pages...`);
+          let copyById: Map<string, { commentary?: string; imageUrl?: string; headline?: string; cta?: string }>;
+          let blockNote = "";
+          try {
+            copyById = await fetchAdCopyByIds(targetIds, {
+              concurrency: opts.concurrency,
+              pageDelayMs: opts.pageDelayMs,
+              headless: opts.headless,
+              onProgress: progress,
+            });
+          } catch (e) {
+            if (!(e instanceof AdLibraryBlockedError)) throw e;
+            copyById = e.partialCopy ?? new Map();
+            blockNote = ` ${e.message}`;
+            progress(e.message);
+          }
           let enriched = 0;
           for (const ad of ads) {
             const c = copyById.get(ad.detailId);
@@ -86,7 +111,7 @@ export async function scanCompetitorAds(opts: CompetitorAdsOptions): Promise<Com
               enriched++;
             }
           }
-          note = `Copy layered onto ${enriched}/${ads.length} ads.`;
+          note = `Copy layered onto ${enriched}/${ads.length} ads.${capNote}${blockNote}`;
         } catch (e) {
           note = `Copy not layered in (${e instanceof Error ? e.message : String(e)}); API metadata only.`;
           progress(note);
@@ -113,7 +138,11 @@ export async function scanCompetitorAds(opts: CompetitorAdsOptions): Promise<Com
             : String(e);
       progress(`Official API unavailable (${reason}); falling back to the browser scraper.`);
       const scan = await scanAdLibrary(opts);
-      return { engine: "scraper", note: `Used scraper fallback: ${reason}`, ...toResultBody(scan) };
+      return {
+        engine: "scraper",
+        ...toResultBody(scan),
+        note: [`Used scraper fallback: ${reason}`, scan.note].filter(Boolean).join(" "),
+      };
     }
   }
 
@@ -125,6 +154,6 @@ export async function scanCompetitorAds(opts: CompetitorAdsOptions): Promise<Com
   return { engine: "scraper", ...toResultBody(scan) };
 }
 
-function toResultBody(scan: AdLibraryScan): Omit<CompetitorAdsResult, "engine" | "note"> {
-  return { query: scan.query, totalReported: scan.totalReported, fetched: scan.fetched, ads: scan.ads };
+function toResultBody(scan: AdLibraryScan): Omit<CompetitorAdsResult, "engine"> {
+  return { query: scan.query, totalReported: scan.totalReported, fetched: scan.fetched, note: scan.note, ads: scan.ads };
 }
