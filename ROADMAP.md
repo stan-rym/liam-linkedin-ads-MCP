@@ -28,8 +28,34 @@ creates drafts, and nothing spends until you activate it.
   themes and how the account is run from the result. CLI `competitor ads`, MCP `inspect_competitor_ads`.
 - **Delivery**: local CLI, local MCP server, and a hosted MCP on Vercel that accepts your own
   LinkedIn app credentials as headers, so nothing needs deploying to use it.
+- **Google Ads (Search)**: paused-only Search campaign creation from a brief — budget,
+  campaign, geo/language targeting, ad groups, keywords, and responsive search ads, all in a
+  single atomic `googleAds:mutate` that either lands whole or not at all. Every write is
+  validated server-side first (`validateOnly`), which is a true dry run. House rules are
+  hard-coded: search network only (display expansion and search partners off), physical
+  presence geo targeting, Manual CPC. Plus keyword research with volume, competition, and
+  top-of-page bid ranges; conversion-action lookup; account structure; and GAQL reporting at
+  campaign, ad group, ad, keyword, and search-term level. CLI `liam google ...`, MCP `gads_*`,
+  skill `gads-launch`.
 
 ## Planned
+
+### Google Ads
+
+- **Performance Max**. A different creation shape entirely: asset groups, a text/image asset
+  library, listing groups, and audience signals instead of ad groups and keywords.
+- **Customer Match audiences**. Upload from CSV and straight from Salesforce, reusing the
+  hashing and Salesforce reader that already exist for LinkedIn.
+- **Analysis skills** (`gads-spend`, `gads-performance`, `gads-leads`) mirroring the LinkedIn
+  set, once there is enough spend to read.
+- **Search-term mining**. Turn the search-term report into a ranked negative-keyword list and
+  apply it, which is the highest-leverage recurring job on a search account.
+- **Per-campaign conversion goals**. Liam verifies conversion actions today but leaves goal
+  selection to the UI; wire it at creation once the right field is confirmed live.
+- **Editing what exists**. Budget, bid, status, and keyword changes on live campaigns, with
+  the same preview-before-apply shape as LinkedIn's `campaigns update`.
+- **Cross-platform reporting**. One view putting LinkedIn and Google spend, leads, and cost
+  per conversion side by side, which is the actual weekly question.
 
 ### Optimization and insights
 

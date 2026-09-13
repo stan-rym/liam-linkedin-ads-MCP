@@ -1,3 +1,15 @@
+import {
+  deriveCoreKpis,
+  resolvePeriodIso,
+  resolveIsoDateRange,
+  num,
+  r2,
+  r4,
+  pctChange,
+  topBy,
+  bottomBy,
+  type Period,
+} from "@liads/shared";
 import type { LinkedInClient } from "./http.js";
 import {
   fetchAnalytics,
@@ -11,29 +23,12 @@ import { getCampaignGroup } from "./resources/campaignGroups.js";
 
 /* ----------------------------------- dates ---------------------------------- */
 
-export type Period = "last_7_days" | "last_30_days" | "last_90_days" | "month_to_date" | "last_month";
+// The period math is shared; only the conversion into LinkedIn's `{year, month,
+// day}` date shape is LinkedIn's.
+export type { Period };
+export { topBy, bottomBy };
 
-const toLiDate = (d: Date): LiDate => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() });
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d));
-
-/** Resolve a named period into a concrete date range, relative to `now`. */
-export function resolvePeriod(period: Period, now = new Date()): DateRange {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const today = utc(y, m, now.getUTCDate());
-  const back = (n: number) => {
-    const s = new Date(today);
-    s.setUTCDate(s.getUTCDate() - (n - 1));
-    return { start: toLiDate(s), end: toLiDate(today) };
-  };
-  switch (period) {
-    case "last_7_days": return back(7);
-    case "last_30_days": return back(30);
-    case "last_90_days": return back(90);
-    case "month_to_date": return { start: toLiDate(utc(y, m, 1)), end: toLiDate(today) };
-    case "last_month": return { start: toLiDate(utc(y, m - 1, 1)), end: toLiDate(utc(y, m, 0)) };
-  }
-}
 
 /** Parse "YYYY-MM-DD" into a LiDate. */
 export function parseDate(s: string): LiDate {
@@ -41,12 +36,16 @@ export function parseDate(s: string): LiDate {
   return { year: year!, month: month!, day: day! };
 }
 
+/** Resolve a named period into a concrete date range, relative to `now`. */
+export function resolvePeriod(period: Period, now = new Date()): DateRange {
+  const { start, end } = resolvePeriodIso(period, now);
+  return { start: parseDate(start), end: parseDate(end) };
+}
+
 /** Resolve a date range from an explicit start/end (YYYY-MM-DD) or a named period. */
 export function resolveDateRange(opts: { period?: Period; startDate?: string; endDate?: string }): DateRange {
-  if (opts.startDate && opts.endDate) {
-    return { start: parseDate(opts.startDate), end: parseDate(opts.endDate) };
-  }
-  return resolvePeriod(opts.period ?? "last_30_days");
+  const { start, end } = resolveIsoDateRange(opts);
+  return { start: parseDate(start), end: parseDate(end) };
 }
 
 /* --------------------------------- metrics ---------------------------------- */
@@ -94,19 +93,12 @@ interface Kpis {
   engagementRate: number;
 }
 
-const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0)) || 0;
-const r2 = (x: number) => Math.round(x * 100) / 100;
-const r4 = (x: number) => Math.round(x * 10000) / 10000;
-
+/** The universal KPIs plus the two LinkedIn adds on top (cost per lead, engagement rate). */
 function deriveKpis(base: BaseMetrics): Kpis {
-  const { impressions, clicks, costUsd, conversions, leads, engagements } = base;
+  const { impressions, costUsd, leads, engagements } = base;
   return {
-    ctr: impressions ? r4(clicks / impressions) : 0,
-    cpc: clicks ? r2(costUsd / clicks) : 0,
-    cpm: impressions ? r2((costUsd / impressions) * 1000) : 0,
+    ...deriveCoreKpis(base),
     cpl: leads ? r2(costUsd / leads) : 0,
-    cvr: clicks ? r4(conversions / clicks) : 0,
-    costPerConversion: conversions ? r2(costUsd / conversions) : 0,
     engagementRate: impressions ? r4(engagements / impressions) : 0,
   };
 }
@@ -153,13 +145,6 @@ export function aggregate(rows: MetricRow[], label = "(total)"): MetricRow {
 }
 
 /* ----------------------------- ranking & flags ------------------------------ */
-
-export function topBy(rows: MetricRow[], metric: keyof MetricRow, n = 5): MetricRow[] {
-  return [...rows].sort((a, b) => num(b[metric]) - num(a[metric])).slice(0, n);
-}
-export function bottomBy(rows: MetricRow[], metric: keyof MetricRow, n = 5): MetricRow[] {
-  return [...rows].sort((a, b) => num(a[metric]) - num(b[metric])).slice(0, n);
-}
 
 export interface Flag {
   entityUrn: string;
@@ -280,7 +265,7 @@ const isoWeekStart = (d: LiDate): string => {
   return dt.toISOString().slice(0, 10);
 };
 
-const pct = (curr: number, prev: number) => (prev ? r4((curr - prev) / prev) : 0);
+const pct = pctChange;
 
 /**
  * Weekly or monthly trend for one entity, with period-over-period deltas on the

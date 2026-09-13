@@ -23,7 +23,10 @@ import { registerTools } from "@liads/mcp/tools";
 const mcpHandler = createMcpHandler(
   // The adapter's server is the same MCP SDK type; cast across the version boundary.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (server) => registerTools(server as any),
+  // Google tools are withheld here on purpose: this endpoint is multi-tenant
+  // over per-request LinkedIn credentials, and Google credentials would come
+  // from shared server env vars. See RegisterToolsOptions.
+  (server) => registerTools(server as any, { google: false }),
   { serverInfo: { name: "liam", version: "0.1.0" } },
   { basePath: "/api" },
 );

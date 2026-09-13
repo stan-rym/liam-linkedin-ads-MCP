@@ -54,12 +54,18 @@ importers:
       '@liads/core':
         specifier: workspace:*
         version: link:../core
+      '@liads/google':
+        specifier: workspace:*
+        version: link:../google
       commander:
         specifier: ^13.0.0
         version: 13.1.0
 
   packages/core:
     dependencies:
+      '@liads/shared':
+        specifier: workspace:*
+        version: link:../shared
       csv-parse:
         specifier: ^5.6.0
         version: 5.6.0
@@ -73,17 +79,35 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/google:
+    dependencies:
+      '@liads/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+
   packages/mcp:
     dependencies:
       '@liads/core':
         specifier: workspace:*
         version: link:../core
+      '@liads/google':
+        specifier: workspace:*
+        version: link:../google
       '@modelcontextprotocol/sdk':
         specifier: ^1.13.0
         version: 1.29.0(zod@3.25.76)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/shared:
+    dependencies:
+      open:
+        specifier: ^10.1.0
+        version: 10.2.0
 
 packages:
 

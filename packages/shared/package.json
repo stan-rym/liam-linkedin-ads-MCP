@@ -1,5 +1,5 @@
 {
-  "name": "@liads/core",
+  "name": "@liads/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,14 +13,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test \"test/*.test.mjs\""
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@liads/shared": "workspace:*",
-    "csv-parse": "^5.6.0",
-    "open": "^10.1.0",
-    "playwright": "^1.61.0",
-    "zod": "^3.24.1"
+    "open": "^10.1.0"
   }
 }

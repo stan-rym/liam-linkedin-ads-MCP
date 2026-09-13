@@ -1,3 +1,11 @@
+import {
+  sleep,
+  isRetryableStatus,
+  retryDelayMs,
+  transportRetryDelayMs,
+  DEFAULT_MAX_RETRIES,
+  type TokenProvider,
+} from "@liads/shared";
 import { type AppConfig, linkedinVersion } from "./config.js";
 
 export const LINKEDIN_REST_BASE = "https://api.linkedin.com/rest";
@@ -59,10 +67,10 @@ export interface MutationEvent {
 /** Side-effect hook invoked after a successful write. Must never throw. */
 export type MutationHook = (m: MutationEvent) => void | Promise<void>;
 
-/** Supplies a valid (auto-refreshed) bearer token. Implemented in auth.ts. */
-export type TokenProvider = () => Promise<string>;
+/** Supplies a valid (auto-refreshed) bearer token. Built in auth.ts. */
+export type { TokenProvider };
 
-const MAX_RETRIES = 4;
+const MAX_RETRIES = DEFAULT_MAX_RETRIES;
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
   const url = new URL(LINKEDIN_REST_BASE + path);
@@ -73,8 +81,6 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   }
   return url.toString();
 }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The one place every LinkedIn REST call flows through. Injects the versioned
@@ -115,15 +121,14 @@ export class LinkedInClient {
       } catch (err) {
         lastErr = err;
         if (attempt < MAX_RETRIES) {
-          await sleep(2 ** attempt * 500);
+          await sleep(transportRetryDelayMs(attempt));
           continue;
         }
         throw err;
       }
 
-      if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
-        const retryAfter = Number(res.headers.get("retry-after"));
-        await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2 ** attempt * 1000);
+      if (isRetryableStatus(res.status) && attempt < MAX_RETRIES) {
+        await sleep(retryDelayMs(attempt, res.headers.get("retry-after")));
         continue;
       }
 
