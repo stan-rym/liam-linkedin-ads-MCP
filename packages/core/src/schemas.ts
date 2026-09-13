@@ -211,16 +211,10 @@ export const AdLibraryScanSchema = z.object({
   keyword: z.string().optional().describe("Free-text keyword search across ad copy"),
   countries: z.array(z.string()).optional().describe("ISO-3166 country codes to scope, e.g. ['US','GB']"),
   max: z.number().int().positive().max(500).default(50).describe("Max ads to collect"),
-  engine: z.enum(["auto", "api", "scraper"]).default("auto").describe(
-    "auto = official API for metadata + scraper for copy (falls back to pure scraper if the API isn't provisioned); api = official API only, metadata no copy (works hosted); scraper = browser only (local, no auth)",
-  ),
-  deep: z.boolean().default(true).describe("auto: also layer in ad copy from the public library; scraper: fetch each ad's detail page for run dates / impressions / targeting"),
-  concurrency: z.number().int().positive().max(4).default(1).describe(
-    "Scraper: parallel detail-page fetches when deep. Default 1; LinkedIn's Cloudflare blocks the IP (the user's own browser included) when pages arrive too fast",
-  ),
-  copyMax: z.number().int().nonnegative().max(500).default(50).describe(
-    "Most ads to open detail pages for in one run (copy in auto, detail in scraper). Each page is a browser visit from the user's IP; raise deliberately",
-  ),
+  engine: z.enum(["auto", "api"]).default("auto").describe("auto = official API plus remote creative worker; api = metadata only. Local scraping is disabled."),
+  deep: z.boolean().default(true).describe("Enqueue up to 10 verified company ads on the remote worker; reuse cached creatives."),
+  concurrency: z.literal(1).default(1).describe("Remote worker concurrency is fixed at one."),
+  copyMax: z.number().int().nonnegative().max(10).default(10).describe("Creative sample size, capped at 10. Worker budgets cannot be overridden."),
 });
 export type AdLibraryScanInput = z.infer<typeof AdLibraryScanSchema>;
 

@@ -44,7 +44,6 @@ test("the block error says what to do and carries partial copy", () => {
   assert.equal(e.name, "AdLibraryBlockedError");
   assert.equal(e.pagesFetched, 7);
   assert.match(e.message, /blocked this IP/);
-  assert.match(e.message, /own browser/);
   assert.match(e.message, /do not retry/);
   e.partialCopy = new Map([["1", { commentary: "x" }]]);
   assert.equal(e.partialCopy.size, 1);

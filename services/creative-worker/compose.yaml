@@ -1,0 +1,20 @@
+services:
+  creative-worker:
+    build:
+      context: ../..
+      dockerfile: services/creative-worker/Dockerfile
+    init: true
+    restart: "no"
+    stop_grace_period: 90s
+    shm_size: 1gb
+    security_opt:
+      - seccomp=./seccomp_profile.json
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      LIADS_CREATIVE_WORKER_TOKEN: ${LIADS_CREATIVE_WORKER_TOKEN:?Set the worker token}
+    volumes:
+      - creative-data:/data
+    # Exactly one replica. Put an HTTPS reverse proxy in front of localhost:8080.
+volumes:
+  creative-data:

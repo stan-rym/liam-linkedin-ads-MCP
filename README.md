@@ -199,7 +199,7 @@ same `~/.liads` credentials.
    | --- | --- | --- |
    | Advertising API | campaigns, ads, targeting, reporting, conversions | **Yes** |
    | Audiences | uploading CSV contact/company lists as matched audiences | Only for audience upload |
-   | LinkedIn Ad Library | competitor ad metadata via the official API | Optional (the browser scraper works without it) |
+   | LinkedIn Ad Library | competitor ad metadata via the official API | Required for competitor discovery; no browser fallback |
 
 3. On the **Auth** tab, add `http://localhost:53682/callback` as an authorized redirect
    URL, and note your **Client ID** and **Client Secret**.
@@ -459,18 +459,14 @@ See [skills/README.md](./skills/README.md) for details and conventions.
 - **Reporting:** `performance_summary` (account rollup + top/bottom + flags), `get_performance`
   (per-entity KPIs at any level), `performance_trend` (weekly/monthly with deltas). KPIs: CTR,
   CPC, CPM, CPL, conversion rate, cost per conversion. Levels: campaign_group, campaign, creative.
-- **Competitor intel:** `inspect_competitor_ads` reads any company's ads from the LinkedIn Ad
-  Library (no ad-account access needed). The **official Ad Library API** (`GET /rest/adLibrary`,
-  requires the "LinkedIn Ad Library" product grant) returns structured metadata (advertiser, payer,
-  format, and for EU-served ads run dates, impression ranges, per-country split, and targeting facets)
-  but no creative. A **Playwright scraper** of the public library supplies the ad copy/image. Engines
-  (`engine`): `api` (metadata only, fast, works hosted), `scraper` (copy via browser, local, supports
-  company-id), and `auto` (default: API metadata plus copy layered from each ad's detail page, falling
-  back to the scraper if the API isn't provisioned). Search by `advertiser` name or `keyword` (the API
-  has no company-id or date filter). The scraper is paced to protect the user's IP: detail pages are
-  capped at `copyMax` (50) per run, fetched one at a time (`concurrency` 1) with a pause between pages,
-  and the run stops at the first Cloudflare block and says so in `note` (a block also locks the user's
-  own browser out of the Ad Library for a few hours). CLI: `liam competitor ads`.
+- **Competitor intel:** `inspect_competitor_ads` uses the official Ad Library API for
+  metadata and, in `auto` mode, an optional remote worker for creative copy and screenshots.
+  No CLI or MCP code launches a local browser or falls back to scraping when the API fails.
+  Supply both `advertiser` and `companyId` to filter broad API matches before queuing creatives.
+  `api` mode is metadata only. `auto` queues at most 10 ads and returns cached results or job
+  status; use `get_competitor_creatives` / `liam creative-status <ids>` to read completed jobs.
+  The worker persists its cache, queue, rolling budgets and block state. See
+  [Remote creative worker](services/creative-worker/README.md) for deployment and configuration.
 - **Change journal & lift:** `log_ad_change` (record a change), `list_ad_changes`, `compute_lift`
   (before-vs-after performance for each recorded change). Liam auto-journals every change it makes;
   see [Change journal & lift](#change-journal--lift) below.
@@ -510,8 +506,8 @@ liam report trend <level> <id> [-b weekly|monthly]  # trend with deltas
 liam launch --brief <brief.json>        # audience + group + campaign + draft creatives
 liam competitor ads <advertiser>        # any company's ads from the public Ad Library
                                         #   <advertiser> = name, company id, or company URL
-                                        #   -k <keyword> -c <countries> -e auto|api|scraper -m <max> --json
-                                        #   --copy-max <n> (detail pages per run, 50) --concurrency <n> (1) --headed
+                                        #   -k <keyword> -c <countries> -e auto|api -m <max> --json
+                                        #   --company-id <id> --copy-max <n> (remote sample, max 10)
 liam changelog list [-t <type>] [-i <id>]           # recorded ad changes, newest first
 liam changelog add -t <type> -i <id> -f <field> --after <v> [-l <label>]   # log a change made elsewhere
 liam lift <level> <id> [-w <days>]      # before-vs-after performance for each recorded change

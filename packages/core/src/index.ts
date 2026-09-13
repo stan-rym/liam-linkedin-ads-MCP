@@ -32,8 +32,9 @@ export * from "./changelog.js";
 // Salesforce reader (Phase 3 foundation)
 export * from "./salesforce.js";
 
-// Competitor ad intelligence — official Ad Library API (preferred) with a
-// public-library browser scraper as fallback.
+// Competitor ad intelligence: official API and remote creative worker.
 export * from "./adLibrary.js";
 export * from "./adLibraryApi.js";
 export * from "./competitorAds.js";
+
+export * from "./remoteCreatives.js";

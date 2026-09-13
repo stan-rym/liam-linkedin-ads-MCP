@@ -18,27 +18,26 @@ Ad Library.
 
 ## Getting the right ads
 
-- **Name vs company id.** A name search is broad and pulls in partners and resellers
-  ("HubSpot" also returns HubSpot solution partners). For exactly one company's ads,
-  use the numeric company id or a `linkedin.com/company/<id>` URL (scraper engine), or
-  post-filter API results by the advertiser/payer field.
-- **Engines.** `auto` (default) uses the official API for metadata and layers ad copy
-  from each ad's detail page; `api` is metadata-only but fast and works without a
-  local browser (the only engine on a hosted MCP); `scraper` drives a local Chrome and
-  gets copy without the API grant.
-- **Volume.** Default cap is 50 ads; raise `--max` for big advertisers (the API
-  reports the advertiser-wide total, quote it for context). Metadata from the API is
-  cheap at any size. Copy is not: every ad's copy is a browser visit to LinkedIn from
-  the user's own IP, so Liam opens at most `copyMax` (50) detail pages per run, one at
-  a time with a pause. For a big advertiser, pull metadata at a high `--max` and read
-  copy from the capped sample; raise `copyMax` only when the user asks for more copy
-  and knows the cost.
-- **If LinkedIn blocks the scraper.** Liam stops at the first Cloudflare block and
-  reports it in `note`. Treat that as final for the session: do not retry the scraper,
-  and never probe the pages with curl, fetch, or a browser-automation tool. The block
-  is on the IP and also locks the user out of the Ad Library in their own browser for
-  a few hours. Say so, hand over the metadata read, and offer to fetch copy later or
-  from another network.
+- **Name plus company id.** Name searches include unrelated advertisers. Supply both
+  advertiser name and verified numeric companyId. The API searches by name and Liam
+  filters the returned advertiser URL before queuing any creative work. Example:
+  `liam competitor ads Ramp --company-id 1406226 --max 100 --copy-max 10 --json`.
+  Total reported is the broad API query total, not an exact-company or active-ad count.
+- **Engines.** `api` returns metadata. `auto` adds cached copy/screenshots from a remote
+  creative worker or queues missing ads. Local scraping is disabled, including fallback.
+  Configure LIADS_CREATIVE_WORKER_URL and LIADS_CREATIVE_WORKER_TOKEN on the CLI/MCP host.
+- **Coverage.** Read up to 10 sampled creatives. Pending work is asynchronous: use
+  `get_competitor_creatives` with IDs, or `liam creative-status id1,id2`, to check it.
+  Status reads never visit LinkedIn or enqueue more work. Poll at reasonable intervals.
+  Do not rerun discovery just to wait for copy. Report collection dates, sample coverage,
+  missing copy, and whether a screenshot is a preview rather than a complete video.
+  Screenshot paths require worker authentication; do not put tokens in URLs or reports.
+- **Cache.** The worker adds a seven-day creative cache automatically. Existing temporary
+  JSON exports are not imported automatically. Repeated ad IDs reuse jobs and cached results.
+- **Blocks and outages.** If the worker is blocked, stop. Do not probe LinkedIn via another
+  browser, curl, fetch, proxy or network. Never override worker limits, clear its state or
+  resume it without explicit operator authorization. Return available metadata/cached data.
+  If no worker is configured, say creative collection is unavailable; do not scrape locally.
 - **EU bonus data.** Ads served in the EU carry run dates, impression ranges,
   per-country splits, and structured targeting facets. Use them; they are the closest
   thing to seeing a competitor's media plan.
