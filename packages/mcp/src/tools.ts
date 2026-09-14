@@ -1,3 +1,4 @@
+import { getRemoteCreatives } from "@liads/core";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
@@ -468,7 +469,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
 
   server.tool(
     "inspect_competitor_ads",
-    "Pull a competitor's (or any company's) live and recent ads from the LinkedIn Ad Library. Prefers the official Ad Library API (engine 'auto'/'api'; works hosted but the app must be granted the 'LinkedIn Ad Library' product, else it 403s and 'auto' falls back to a local browser scraper — local only). Returns each ad's advertiser, sponsor ('promoted by'), full copy, format, image, and run dates / estimated impressions / per-country targeting (EU-served ads). Use to analyze messaging themes, offers, creative formats, posting cadence, and how their account is run. Name search is broad (includes partners/resellers); pass a numeric companyId for one company's own ads. Copy costs one browser visit per ad from the user's IP, so detail pages are capped at copyMax (50) per run, fetched one at a time, and the run stops at the first Cloudflare block (reported in 'note'; a block also locks the user out of the Ad Library in their own browser, so do not retry or probe the pages another way). Synthesize themes/trends rather than dumping ads raw.",
+    "Discover competitor ads through the official API. auto optionally queues up to 10 creatives on the remote worker; api returns metadata only. Always provide advertiser plus companyId to filter unrelated name matches before collection. No local browser or scraper fallback. Read pending results with get_competitor_creatives. Cached screenshots require worker authentication. Report sample coverage and collection dates; never retry a blocked worker or use another browser/client. Synthesize findings rather than dumping rows.",
     AdLibraryScanSchema.shape,
     async (args) => {
       try {
@@ -479,4 +480,14 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions =
       }
     },
   );
+  server.tool(
+    "get_competitor_creatives",
+    "Read remote creative job status and cached copy by ad IDs. Read-only: does not enqueue work or visit LinkedIn. Screenshots are available through the authenticated worker endpoint.",
+    { ids: z.array(z.string().regex(/^\d{1,30}$/)).min(1).max(10) },
+    async ({ ids }) => {
+      try { return ok(await getRemoteCreatives(ids)); }
+      catch (e) { return fail(e); }
+    },
+  );
+
 }

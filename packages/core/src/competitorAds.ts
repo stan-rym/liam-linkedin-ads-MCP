@@ -1,159 +1,59 @@
-/**
- * Unified competitor-ad scan.
- *
- * The official Ad Library API and the public-library scraper are complementary:
- *   - API     → reliable, scalable METADATA: advertiser, payer, format, run
- *               dates, impression ranges, per-country split, and structured
- *               targeting facets — but NO ad copy/creative.
- *   - Scraper → the ad COPY (and image), plus format/advertiser, from the public
- *               library; needs a local browser.
- *
- * Engines (option `engine`):
- *   - "auto" (default): query the API for metadata, then (deep) layer in copy by
- *     scraping the same advertiser and joining on ad id. Falls back to a pure
- *     scraper run if the API isn't provisioned / there's no auth.
- *   - "api": API only — metadata, no copy. No browser; works on the hosted MCP.
- *   - "scraper": browser only — copy + format + (EU) metadata. Local, no auth.
- */
-
-import {
-  scanAdLibrary,
-  fetchAdCopyByIds,
-  AdLibraryBlockedError,
-  SCRAPER_DEFAULTS,
-  type AdLibraryScanOptions,
-  type AdLibraryScan,
-  type AdLibraryAd,
-} from "./adLibrary.js";
-import { searchAdLibraryApi, AdLibraryAccessError } from "./adLibraryApi.js";
+/** Official API discovery plus optional remote creative collection. Never opens a local browser. */
+import type { AdLibraryScanOptions, AdLibraryAd } from "./adLibrary.js";
+import { searchAdLibraryApi } from "./adLibraryApi.js";
+import { creativeWorkerConfig, getRemoteCreatives } from "./remoteCreatives.js";
 
 export type CompetitorAdsEngine = "auto" | "api" | "scraper";
-
-export interface CompetitorAdsOptions extends AdLibraryScanOptions {
-  engine?: CompetitorAdsEngine;
-}
-
+export interface CompetitorAdsOptions extends AdLibraryScanOptions { engine?: CompetitorAdsEngine }
 export interface CompetitorAdsResult {
-  /** Which engine produced the result. */
-  engine: "api" | "scraper";
-  /** Notes, e.g. fallback reason or copy-enrichment coverage. */
+  engine: "api";
   note?: string;
-  query: { advertiser?: string; companyId?: string; keyword?: string; countries?: string[]; url?: string };
+  query: { advertiser?: string; companyId?: string; keyword?: string; countries?: string[] };
   totalReported?: number;
   fetched: number;
   ads: AdLibraryAd[];
 }
 
 export async function scanCompetitorAds(opts: CompetitorAdsOptions): Promise<CompetitorAdsResult> {
-  const engine = opts.engine ?? "auto";
-  const progress = opts.onProgress ?? (() => {});
-  const deep = opts.deep ?? true;
-
-  // The API has no company-id filter; only advertiser name or keyword.
-  const apiUsable = Boolean(opts.advertiser || opts.keyword);
-
-  if (engine === "api" || (engine === "auto" && apiUsable)) {
-    try {
-      progress("Querying the official LinkedIn Ad Library API...");
-      const { createLiads } = await import("./client.js");
-      const liads = await createLiads();
-      const api = await searchAdLibraryApi(liads.client, {
-        keyword: opts.keyword,
-        advertiser: opts.advertiser,
-        countries: opts.countries,
-        max: opts.max,
-        onProgress: progress,
-      });
-      const ads = api.ads as AdLibraryAd[];
-
-      let note: string | undefined;
-      if (deep && engine !== "api") {
-        // Layer in ad copy by opening each ad's own detail page (guaranteed
-        // coverage — the API and the public search list don't return the same
-        // ad sets, so joining on a search scrape would miss most ads).
-        //
-        // Every page is a browser visit from the user's IP, and LinkedIn's
-        // Cloudflare blocks the IP (their own browser included) when too many
-        // arrive too fast. So: cap the pages, fetch them one at a time with a
-        // pause, and stop at the first block instead of hammering on.
-        const ids = ads.map((a) => a.detailId).filter(Boolean);
-        const copyMax = Math.max(0, opts.copyMax ?? SCRAPER_DEFAULTS.copyMax);
-        const targetIds = ids.slice(0, copyMax);
-        const capNote =
-          targetIds.length < ids.length
-            ? ` Detail pages capped at ${targetIds.length} of ${ids.length} ads (each is a browser visit from your IP); raise copyMax deliberately for more.`
-            : "";
-        try {
-          progress(`Layering in ad copy from ${targetIds.length} detail pages...`);
-          let copyById: Map<string, { commentary?: string; imageUrl?: string; headline?: string; cta?: string }>;
-          let blockNote = "";
-          try {
-            copyById = await fetchAdCopyByIds(targetIds, {
-              concurrency: opts.concurrency,
-              pageDelayMs: opts.pageDelayMs,
-              headless: opts.headless,
-              onProgress: progress,
-            });
-          } catch (e) {
-            if (!(e instanceof AdLibraryBlockedError)) throw e;
-            copyById = e.partialCopy ?? new Map();
-            blockNote = ` ${e.message}`;
-            progress(e.message);
+  if (opts.engine === "scraper") throw new Error("Local scraper mode has been removed. Use auto for API discovery plus the remote creative worker.");
+  if (!opts.advertiser && !opts.keyword) throw new Error("Provide an advertiser name with companyId. The official API needs a name; companyId filters its results. Local scraping is disabled.");
+  if (opts.companyId && !/^\d+$/.test(opts.companyId)) throw new Error("companyId must be numeric.");
+  if (opts.max !== undefined && (!Number.isInteger(opts.max) || opts.max < 1 || opts.max > 500)) throw new Error("max must be an integer from 1 to 500.");
+  if (opts.copyMax !== undefined && (!Number.isInteger(opts.copyMax) || opts.copyMax < 0 || opts.copyMax > 10)) throw new Error("copyMax must be an integer from 0 to 10.");
+  const { createLiads } = await import("./client.js");
+  const liads = await createLiads();
+  // API errors propagate. They must never trigger a browser fallback.
+  const result = await searchAdLibraryApi(liads.client, opts);
+  const ads = opts.companyId ? result.ads.filter(ad =>
+    ad.detail?.advertiserUrl?.replace(/\/$/, "").endsWith(`/company/${opts.companyId}`)) : result.ads;
+  const notes = [opts.companyId
+    ? `Filtered ${result.fetched} API results to ${ads.length} ads for company ${opts.companyId}. Total reported is the broad API query total, not the exact company total.`
+    : "Advertiser name searches can include unrelated companies. Supply companyId to filter before collecting creatives."];
+  if (opts.engine !== "api" && opts.deep !== false && ads.length) {
+    // Broad name matches never automatically schedule unrelated advertisers.
+    if (!opts.companyId) notes.push("Creative collection requires companyId to verify the advertiser. API metadata only.");
+    else {
+      const limit = Math.min(10, Math.max(0, Math.floor(opts.copyMax ?? 10)));
+      try {
+        const remote = await getRemoteCreatives(ads.slice(0, limit).map(ad => ad.detailId), true);
+        for (const creative of remote.creatives) {
+          const ad = ads.find(a => a.detailId === creative.id);
+          if (!ad) continue;
+          ad.creativeStatus = creative.status;
+          ad.collectedAt = creative.collectedAt;
+          if (creative.copy) {
+            ad.commentary = creative.copy.commentary;
+            ad.imageUrl = creative.copy.imageUrl;
+            ad.detail = { ...ad.detail, headline: creative.copy.headline, cta: creative.copy.cta };
+            if (creative.copy.screenshotPath) ad.screenshotUrl = `${creativeWorkerConfig().base}/v1/creatives/${creative.id}/screenshot`;
           }
-          let enriched = 0;
-          for (const ad of ads) {
-            const c = copyById.get(ad.detailId);
-            if (c) {
-              if (c.commentary) ad.commentary = c.commentary;
-              if (c.imageUrl) ad.imageUrl = c.imageUrl;
-              if (c.headline && ad.detail) ad.detail.headline = c.headline;
-              if (c.cta && ad.detail) ad.detail.cta = c.cta;
-              enriched++;
-            }
-          }
-          note = `Copy layered onto ${enriched}/${ads.length} ads.${capNote}${blockNote}`;
-        } catch (e) {
-          note = `Copy not layered in (${e instanceof Error ? e.message : String(e)}); API metadata only.`;
-          progress(note);
         }
-      } else if (engine === "api") {
-        note = "API metadata only (engine=api); no ad copy.";
-      }
-
-      return {
-        engine: "api",
-        note,
-        query: { advertiser: opts.advertiser, companyId: opts.companyId, keyword: opts.keyword, countries: opts.countries },
-        totalReported: api.totalReported,
-        fetched: api.fetched,
-        ads,
-      };
-    } catch (e) {
-      if (engine === "api") throw e;
-      const reason =
-        e instanceof AdLibraryAccessError
-          ? "Ad Library API not provisioned for this app"
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      progress(`Official API unavailable (${reason}); falling back to the browser scraper.`);
-      const scan = await scanAdLibrary(opts);
-      return {
-        engine: "scraper",
-        ...toResultBody(scan),
-        note: [`Used scraper fallback: ${reason}`, scan.note].filter(Boolean).join(" "),
-      };
+        notes.push(`${remote.creatives.filter(c => c.status === "done").length}/${remote.creatives.length} sampled creatives ready. Pending jobs run on the remote worker; use get_competitor_creatives or creative-status to read them without another discovery request.`);
+        if (remote.note) notes.push(remote.note);
+        if (remote.blocked) notes.push("Worker blocked: collection disabled until operator review. Do not retry scraping.");
+      } catch (e) { notes.push(e instanceof Error ? e.message : "Remote worker unavailable; metadata only."); }
     }
-  }
-
-  // engine === "scraper", or "auto" with only a company id (API can't filter by id).
-  if (engine === "auto" && !apiUsable) {
-    progress("Only a company id was given; the API can't filter by id, using the browser scraper.");
-  }
-  const scan = await scanAdLibrary(opts);
-  return { engine: "scraper", ...toResultBody(scan) };
-}
-
-function toResultBody(scan: AdLibraryScan): Omit<CompetitorAdsResult, "engine"> {
-  return { query: scan.query, totalReported: scan.totalReported, fetched: scan.fetched, note: scan.note, ads: scan.ads };
+  } else notes.push("API metadata only; no browser requests.");
+  return { engine: "api", query: { advertiser: opts.advertiser, companyId: opts.companyId, keyword: opts.keyword, countries: opts.countries },
+    totalReported: result.totalReported, fetched: ads.length, ads, note: notes.join(" ") };
 }

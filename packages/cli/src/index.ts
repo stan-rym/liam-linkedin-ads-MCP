@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getRemoteCreatives } from "@liads/core";
 import { Command } from "commander";
 import {
   login,
@@ -339,21 +340,20 @@ program
 const competitor = program.command("competitor").description("Competitor ad intelligence (public LinkedIn Ad Library)");
 competitor
   .command("ads <advertiser>")
-  .description("Scan a competitor's ads from the public Ad Library. <advertiser> = company name, numeric company id, or an ad-library/company URL.")
+  .description("Discover competitor ads through the official API. Supply advertiser name plus --company-id for remote creatives.")
   .option("--company-id <id>", "Force a numeric LinkedIn company id (most precise)")
   .option("-k, --keyword <text>", "Keyword search across ad copy instead of an advertiser")
   .option("-c, --country <codes>", "Comma-separated ISO country codes, e.g. US,GB")
-  .option("-e, --engine <engine>", "auto | api | scraper", "auto")
+  .option("-e, --engine <engine>", "auto | api (local scraper removed)", "auto")
   .option("-m, --max <n>", "Max ads to collect", (v) => parseInt(v, 10), 50)
-  .option("--no-deep", "auto: skip copy layering (API metadata only); scraper: skip per-ad detail — faster")
-  .option("--copy-max <n>", "Most ads to open detail pages for (default 50; each is a browser visit from your IP)", (v) => parseInt(v, 10))
-  .option("--concurrency <n>", "Parallel detail-page fetches (default 1; more risks a Cloudflare block)", (v) => parseInt(v, 10))
-  .option("--headed", "Scraper: show the browser window (debug)")
+  .option("--no-deep", "Skip remote creative collection (API metadata only)")
+  .option("--copy-max <n>", "Remote creative sample size (default and maximum 10)", (v) => parseInt(v, 10))
+  .option("--concurrency <n>", "Deprecated: remote worker concurrency is fixed at 1", (v) => parseInt(v, 10))
   .option("--json", "Print raw JSON instead of a summary")
   .action(async (advertiser: string, opts) => {
     const parsed = parseAdvertiserQuery(advertiser);
     const scan = await scanCompetitorAds({
-      advertiser: opts.companyId ? undefined : parsed.advertiser,
+      advertiser: parsed.advertiser,
       companyId: opts.companyId ?? parsed.companyId,
       keyword: opts.keyword ?? parsed.keyword,
       countries: opts.country ? String(opts.country).split(",").map((s: string) => s.trim()).filter(Boolean) : undefined,
@@ -362,7 +362,6 @@ competitor
       deep: opts.deep,
       copyMax: opts.copyMax,
       concurrency: opts.concurrency,
-      headless: !opts.headed,
       onProgress: (m) => console.error(`… ${m}`),
     });
     if (opts.json) {
@@ -537,6 +536,12 @@ ad
     const accountId = opts.account ?? (await requireDefaultAccountId());
     const res = await deleteAd(liads.client, accountId, creativeId);
     console.log(`Deleted ${res.creativeId}` + (res.postUrn ? ` (post ${res.postUrn}${res.postDeleted ? " deleted" : " left in place"})` : ""));
+  });
+
+program.command("creative-status <ids>")
+  .description("Read remote creative jobs without visiting LinkedIn; comma-separated ad IDs")
+  .action(async (ids: string) => {
+    console.log(JSON.stringify(await getRemoteCreatives(ids.split(",")), null, 2));
   });
 
 program.parseAsync().catch((err) => {

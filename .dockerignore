@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+**/.next
+**/.vercel
+**/.env
+**/.env.*
+**/*.log
+**/.DS_Store
+.liads
