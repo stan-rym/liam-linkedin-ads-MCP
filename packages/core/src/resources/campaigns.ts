@@ -44,6 +44,7 @@ export async function createCampaign(
     politicalIntent: input.politicalIntent ?? "NOT_POLITICAL",
   };
   if (input.objectiveType) body.objectiveType = input.objectiveType;
+  if (input.creativeSelection) body.creativeSelection = input.creativeSelection;
   if (input.dailyBudget) body.dailyBudget = input.dailyBudget;
   if (input.totalBudget) body.totalBudget = input.totalBudget;
   if (input.unitCost) body.unitCost = input.unitCost;
@@ -135,6 +136,7 @@ export async function updateCampaign(
   if (input.totalBudget !== undefined) patch.totalBudget = input.totalBudget;
   if (input.unitCost !== undefined) patch.unitCost = input.unitCost;
   if (input.runSchedule !== undefined) patch.runSchedule = input.runSchedule;
+  if (input.creativeSelection !== undefined) patch.creativeSelection = input.creativeSelection;
 
   const updated = Object.keys(patch);
   if (updated.length === 0) {
@@ -176,6 +178,8 @@ export interface CampaignSummary {
   campaignGroupId: string;
   format?: string;
   objectiveType?: string;
+  /** Ad rotation: OPTIMIZED or ROUND_ROBIN (rotate evenly). */
+  creativeSelection?: string;
 }
 
 /**
@@ -195,6 +199,7 @@ export async function listCampaigns(
     campaignGroup?: string;
     format?: string;
     objectiveType?: string;
+    creativeSelection?: string;
   }>(client, `/adAccounts/${accountId}/adCampaigns`);
   return els
     .map((e) => ({
@@ -204,6 +209,7 @@ export async function listCampaigns(
       campaignGroupId: String(e.campaignGroup ?? "").replace("urn:li:sponsoredCampaignGroup:", ""),
       format: e.format,
       objectiveType: e.objectiveType,
+      creativeSelection: e.creativeSelection,
     }))
     .filter((c) => opts.includeArchived || !["ARCHIVED", "REMOVED"].includes(c.status))
     .filter((c) => !opts.groupId || c.campaignGroupId === opts.groupId);

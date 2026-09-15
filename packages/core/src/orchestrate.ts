@@ -99,6 +99,7 @@ export async function launchFromBrief(
     locale: { country: "US", language: "en" },
     runSchedule: input.runSchedule,
     status: "DRAFT",
+    creativeSelection: input.creativeSelection,
     targeting: spec,
     politicalIntent: "NOT_POLITICAL",
     applyDefaultExclusions: true,

@@ -56,6 +56,11 @@ every campaign:
   SINGLE_VIDEO; format cannot be patched afterwards. Getting this wrong means
   recreating the campaign.
 - Sponsoring somebody else's post takes the ENGAGEMENT objective.
+- **Ad rotation** is the campaign field `creativeSelection`: `OPTIMIZED` (LinkedIn's
+  default, favors the predicted winner) or `ROUND_ROBIN` (Campaign Manager's "Rotate ads
+  evenly"). Small audiences with several ads per ad set usually want `ROUND_ROBIN` so every
+  ad gets a fair read. Set it on `create_campaign` / `update_campaign`, in a brief, or with
+  `liam campaigns update <id> --rotation even --apply`.
 
 ## Step 4: confirm, then create
 
