@@ -444,6 +444,10 @@ campaigns
     const accountId = opts.account ?? (await requireDefaultAccountId());
     const c = (await getCampaign(liads.client, accountId, campaignId)) as Record<string, unknown>;
     console.log(`${c.id ?? campaignId}\t${c.status ?? ""}\t${c.name ?? ""}`);
+    if (c.creativeSelection) {
+      const label = c.creativeSelection === "ROUND_ROBIN" ? "even (ROUND_ROBIN)" : String(c.creativeSelection);
+      console.log(`ad rotation: ${label}`);
+    }
     console.log("targetingCriteria:");
     console.log(JSON.stringify(c.targetingCriteria ?? {}, null, 2));
   });
@@ -461,6 +465,7 @@ campaigns
   .option("--total-budget <amount>", "total budget amount")
   .option("--bid <amount>", "bid (unit cost) amount")
   .option("--currency <code>", "currency for budgets/bid (default USD)", "USD")
+  .option("--rotation <mode>", "ad rotation: even (ROUND_ROBIN) | optimized (OPTIMIZED)")
   .option("--apply", "actually send the update (otherwise just preview the patch)")
   .action(async (campaignId, opts) => {
     const liads = await createLiads();
@@ -480,6 +485,7 @@ campaigns
       dailyBudget: money(opts.dailyBudget),
       totalBudget: money(opts.totalBudget),
       unitCost: money(opts.bid),
+      creativeSelection: parseRotation(opts.rotation),
       dryRun: !opts.apply,
     };
 
@@ -511,6 +517,15 @@ campaigns
       console.log(`Updated campaign ${res.id} (fields: ${res.updated.join(", ")}).`);
     }
   });
+
+/** Map the --rotation flag to LinkedIn's creativeSelection enum. */
+function parseRotation(mode?: string): "OPTIMIZED" | "ROUND_ROBIN" | undefined {
+  if (mode === undefined) return undefined;
+  const m = mode.trim().toLowerCase();
+  if (["even", "evenly", "round_robin", "round-robin", "roundrobin"].includes(m)) return "ROUND_ROBIN";
+  if (["optimized", "optimised", "auto"].includes(m)) return "OPTIMIZED";
+  throw new Error(`Unknown --rotation "${mode}". Use "even" or "optimized".`);
+}
 
 const ad = program.command("ad").description("Individual ads (creatives)");
 ad

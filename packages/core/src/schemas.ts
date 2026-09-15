@@ -56,6 +56,15 @@ export const TargetingSpecSchema = z.object({
 });
 export type TargetingSpecInput = z.infer<typeof TargetingSpecSchema>;
 
+/**
+ * Ad rotation within a campaign (ad set). LinkedIn's default OPTIMIZED skews
+ * impressions toward the ad it predicts will perform; ROUND_ROBIN is Campaign
+ * Manager's "Rotate ads evenly". (The API enum is ROUND_ROBIN — there is no
+ * ROTATE_EVENLY symbol.)
+ */
+export const CreativeSelectionSchema = z.enum(["OPTIMIZED", "ROUND_ROBIN"]);
+export type CreativeSelection = z.infer<typeof CreativeSelectionSchema>;
+
 export const CampaignInputSchema = z.object({
   accountId: z.string(),
   campaignGroupId: z.string().describe("Numeric campaign group id"),
@@ -71,6 +80,9 @@ export const CampaignInputSchema = z.object({
   locale: z.object({ country: z.string(), language: z.string() }).default({ country: "US", language: "en" }),
   runSchedule: RunScheduleSchema,
   status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).default("DRAFT"),
+  creativeSelection: CreativeSelectionSchema.optional().describe(
+    "Ad rotation: OPTIMIZED (LinkedIn default, favors the predicted winner) or ROUND_ROBIN (rotate ads evenly)",
+  ),
   /**
    * Raw targetingCriteria object (include/exclude tree). Build with helpers in
    * targeting.ts, or pass an adSegment urn via `audienceSegmentUrn` for convenience.
@@ -119,6 +131,9 @@ export const CampaignUpdateSchema = z.object({
   totalBudget: MoneySchema.optional(),
   unitCost: MoneySchema.optional().describe("Bid amount"),
   runSchedule: RunScheduleSchema.optional(),
+  creativeSelection: CreativeSelectionSchema.optional().describe(
+    "Ad rotation: OPTIMIZED (favors the predicted winner) or ROUND_ROBIN (rotate ads evenly)",
+  ),
   /** Build and return the patch WITHOUT sending it. Preview before touching a live campaign. */
   dryRun: z.boolean().default(false),
 });
@@ -234,6 +249,8 @@ export const LaunchFromBriefSchema = z.object({
   conversionIds: z.array(z.string()).optional(),
   /** Or select an existing conversion by name (resolved to its id). */
   conversionName: z.string().optional().describe("e.g. 'Default Meeting Booked - Insight Tag'"),
+  /** Ad rotation for the campaign. Omit for LinkedIn's default (OPTIMIZED). */
+  creativeSelection: CreativeSelectionSchema.optional(),
   creatives: z.array(z.union([TextAdCreativeSchema.omit({ accountId: true, campaignId: true }), SponsoredImageCreativeSchema.omit({ accountId: true, campaignId: true })])).optional(),
 });
 export type LaunchFromBriefInput = z.infer<typeof LaunchFromBriefSchema>;
