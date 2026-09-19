@@ -65,6 +65,26 @@ export type TargetingSpecInput = z.infer<typeof TargetingSpecSchema>;
 export const CreativeSelectionSchema = z.enum(["OPTIMIZED", "ROUND_ROBIN"]);
 export type CreativeSelection = z.infer<typeof CreativeSelectionSchema>;
 
+/**
+ * LinkedIn bidding strategy (Campaign Manager's "Bidding strategy"). MAX_CLICK is
+ * Maximum Delivery optimized for landing page clicks: LinkedIn bids automatically,
+ * charges per impression (costType CPM) and ignores unitCost. NONE is manual bidding.
+ */
+export const OptimizationTargetSchema = z.enum([
+  "NONE",
+  "MAX_CLICK",
+  "MAX_IMPRESSION",
+  "MAX_CONVERSION",
+  "MAX_LEAD",
+  "MAX_VIDEO_VIEW",
+  "MAX_REACH",
+  "TARGET_COST_PER_CLICK",
+  "TARGET_COST_PER_IMPRESSION",
+  "TARGET_COST_PER_VIDEO_VIEW",
+  "ENHANCED_CONVERSION",
+]);
+export type OptimizationTarget = z.infer<typeof OptimizationTargetSchema>;
+
 export const CampaignInputSchema = z.object({
   accountId: z.string(),
   campaignGroupId: z.string().describe("Numeric campaign group id"),
@@ -77,6 +97,9 @@ export const CampaignInputSchema = z.object({
   dailyBudget: MoneySchema.optional(),
   totalBudget: MoneySchema.optional(),
   unitCost: MoneySchema.optional().describe("Bid amount"),
+  optimizationTargetType: OptimizationTargetSchema.optional().describe(
+    "Bidding strategy. MAX_CLICK = Maximum Delivery optimized for landing page clicks (automated bid, charged CPM, unitCost ignored). Omit or NONE for a manual bid.",
+  ),
   locale: z.object({ country: z.string(), language: z.string() }).default({ country: "US", language: "en" }),
   runSchedule: RunScheduleSchema,
   status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).default("DRAFT"),
@@ -129,7 +152,11 @@ export const CampaignUpdateSchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
   dailyBudget: MoneySchema.optional(),
   totalBudget: MoneySchema.optional(),
+  costType: z.enum(["CPC", "CPM", "CPV"]).optional().describe("Change the cost type (CPM for Maximum Delivery)"),
   unitCost: MoneySchema.optional().describe("Bid amount"),
+  optimizationTargetType: OptimizationTargetSchema.optional().describe(
+    "Bidding strategy. MAX_CLICK = Maximum Delivery optimized for landing page clicks (automated bid, charged CPM, unitCost ignored). Omit or NONE for a manual bid.",
+  ),
   runSchedule: RunScheduleSchema.optional(),
   creativeSelection: CreativeSelectionSchema.optional().describe(
     "Ad rotation: OPTIMIZED (favors the predicted winner) or ROUND_ROBIN (rotate ads evenly)",
