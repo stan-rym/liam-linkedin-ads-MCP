@@ -35,6 +35,8 @@ import {
   updateCampaign,
   adSegmentUrn,
   MIN_AUDIENCE_TO_SERVE,
+  OptimizationTargetSchema,
+  type OptimizationTarget,
 } from "@liads/core";
 import { registerGoogleCommands } from "./google.js";
 
@@ -466,6 +468,11 @@ campaigns
   .option("--bid <amount>", "bid (unit cost) amount")
   .option("--currency <code>", "currency for budgets/bid (default USD)", "USD")
   .option("--rotation <mode>", "ad rotation: even (ROUND_ROBIN) | optimized (OPTIMIZED)")
+  .option(
+    "--optimize <target>",
+    "bidding strategy: max-clicks (Maximum Delivery on landing page clicks, sets costType CPM) | manual (NONE) | a raw LinkedIn optimizationTargetType",
+  )
+  .option("--cost-type <type>", "CPC | CPM | CPV (Maximum Delivery needs CPM)")
   .option("--apply", "actually send the update (otherwise just preview the patch)")
   .action(async (campaignId, opts) => {
     const liads = await createLiads();
@@ -486,6 +493,8 @@ campaigns
       totalBudget: money(opts.totalBudget),
       unitCost: money(opts.bid),
       creativeSelection: parseRotation(opts.rotation),
+      optimizationTargetType: parseOptimize(opts.optimize),
+      costType: opts.costType ?? (opts.optimize && opts.optimize !== "manual" ? "CPM" : undefined),
       dryRun: !opts.apply,
     };
 
@@ -517,6 +526,18 @@ campaigns
       console.log(`Updated campaign ${res.id} (fields: ${res.updated.join(", ")}).`);
     }
   });
+
+/** Map the --optimize flag to LinkedIn's optimizationTargetType enum. */
+function parseOptimize(target?: string): OptimizationTarget | undefined {
+  if (!target) return undefined;
+  const t = target.toLowerCase();
+  if (t === "max-clicks" || t === "max_click" || t === "clicks") return "MAX_CLICK";
+  if (t === "manual" || t === "none") return "NONE";
+  const raw = target.toUpperCase().replace(/-/g, "_");
+  const parsed = OptimizationTargetSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  throw new Error(`Unknown --optimize "${target}". Use max-clicks, manual, or a LinkedIn optimizationTargetType.`);
+}
 
 /** Map the --rotation flag to LinkedIn's creativeSelection enum. */
 function parseRotation(mode?: string): "OPTIMIZED" | "ROUND_ROBIN" | undefined {

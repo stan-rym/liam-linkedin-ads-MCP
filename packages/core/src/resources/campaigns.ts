@@ -48,6 +48,7 @@ export async function createCampaign(
   if (input.dailyBudget) body.dailyBudget = input.dailyBudget;
   if (input.totalBudget) body.totalBudget = input.totalBudget;
   if (input.unitCost) body.unitCost = input.unitCost;
+  if (input.optimizationTargetType) body.optimizationTargetType = input.optimizationTargetType;
 
   const res = await client.request({
     method: "POST",
@@ -134,7 +135,9 @@ export async function updateCampaign(
   if (input.status !== undefined) patch.status = input.status;
   if (input.dailyBudget !== undefined) patch.dailyBudget = input.dailyBudget;
   if (input.totalBudget !== undefined) patch.totalBudget = input.totalBudget;
+  if (input.costType !== undefined) patch.costType = input.costType;
   if (input.unitCost !== undefined) patch.unitCost = input.unitCost;
+  if (input.optimizationTargetType !== undefined) patch.optimizationTargetType = input.optimizationTargetType;
   if (input.runSchedule !== undefined) patch.runSchedule = input.runSchedule;
   if (input.creativeSelection !== undefined) patch.creativeSelection = input.creativeSelection;
 
